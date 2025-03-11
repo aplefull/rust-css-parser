@@ -13,8 +13,15 @@ fn main() {
             match parser.parse_stylesheet() {
                 Ok(stylesheet) => {
                     println!("Parsed CSS:");
-                    println!("{:?}", stylesheet);
-                    println!("{}", stylesheet);
+                    println!("Regular rules: {}", stylesheet.rules.len());
+                    for rule in &stylesheet.rules {
+                        println!("{}", rule);
+                    }
+
+                    println!("At-rules: {}", stylesheet.at_rules.len());
+                    for at_rule in &stylesheet.at_rules {
+                        println!("{}", at_rule);
+                    }
                 },
                 Err(err) => {
                     eprintln!("Error parsing CSS: {}", err);

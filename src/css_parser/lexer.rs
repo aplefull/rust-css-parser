@@ -204,6 +204,21 @@ impl Lexer {
                 self.read_char();
                 token
             },
+            '>' => {
+                let token = Token::new(TokenType::GreaterThan, self.line, self.column, 1);
+                self.read_char();
+                token
+            },
+            '~' => {
+                let token = Token::new(TokenType::Tilde, self.line, self.column, 1);
+                self.read_char();
+                token
+            },
+            '@' => {
+                let token = Token::new(TokenType::AtSymbol, self.line, self.column, 1);
+                self.read_char();
+                token
+            },
             '.' => {
                 let token = Token::new(TokenType::Dot, self.line, self.column, 1);
                 self.read_char();

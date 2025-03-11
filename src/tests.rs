@@ -13,7 +13,7 @@ mod tests {
     }
 
     fn get_first_selector_part(stylesheet: &Stylesheet) -> Option<&SelectorPart> {
-        stylesheet.rules.first()?.selector.parts.first()
+        stylesheet.rules.first()?.selectors.first()?.groups.first()?.parts.first()
     }
 
     #[test]
@@ -24,8 +24,8 @@ mod tests {
         assert_eq!(stylesheet.rules.len(), 1);
 
         let rule = &stylesheet.rules[0];
-        assert_eq!(rule.selector.parts.len(), 1);
-        assert_eq!(rule.selector.parts[0], SelectorPart::Class("header".to_string()));
+        assert_eq!(rule.selectors.first().unwrap().groups[0].parts.len(), 1);
+        assert_eq!(rule.selectors.first().unwrap().groups[0].parts[0], SelectorPart::Class("header".to_string()));
 
         assert_eq!(rule.declarations.len(), 1);
         let decl = &rule.declarations[0];
@@ -41,8 +41,8 @@ mod tests {
         assert_eq!(stylesheet.rules.len(), 1);
 
         let rule = &stylesheet.rules[0];
-        assert_eq!(rule.selector.parts.len(), 1);
-        assert_eq!(rule.selector.parts[0], SelectorPart::Id("main".to_string()));
+        assert_eq!(rule.selectors.first().unwrap().groups[0].parts.len(), 1);
+        assert_eq!(rule.selectors.first().unwrap().groups[0].parts[0], SelectorPart::Id("main".to_string()));
 
         assert_eq!(rule.declarations.len(), 1);
         let decl = &rule.declarations[0];
@@ -58,8 +58,8 @@ mod tests {
         assert_eq!(stylesheet.rules.len(), 1);
 
         let rule = &stylesheet.rules[0];
-        assert_eq!(rule.selector.parts.len(), 1);
-        assert_eq!(rule.selector.parts[0], SelectorPart::Element("div".to_string()));
+        assert_eq!(rule.selectors.first().unwrap().groups[0].parts.len(), 1);
+        assert_eq!(rule.selectors.first().unwrap().groups[0].parts[0], SelectorPart::Element("div".to_string()));
 
         assert_eq!(rule.declarations.len(), 1);
         let decl = &rule.declarations[0];
@@ -82,9 +82,9 @@ mod tests {
         let stylesheet = parse(css).unwrap();
 
         let rule = &stylesheet.rules[0];
-        assert_eq!(rule.selector.parts.len(), 2);
-        assert_eq!(rule.selector.parts[0], SelectorPart::Element("div".to_string()));
-        assert_eq!(rule.selector.parts[1], SelectorPart::Class("container".to_string()));
+        assert_eq!(rule.selectors.first().unwrap().groups[0].parts.len(), 2);
+        assert_eq!(rule.selectors.first().unwrap().groups[0].parts[0], SelectorPart::Element("div".to_string()));
+        assert_eq!(rule.selectors.first().unwrap().groups[0].parts[1], SelectorPart::Class("container".to_string()));
     }
 
     #[test]
@@ -93,9 +93,9 @@ mod tests {
         let stylesheet = parse(css).unwrap();
 
         let rule = &stylesheet.rules[0];
-        assert_eq!(rule.selector.parts.len(), 2);
-        assert_eq!(rule.selector.parts[0], SelectorPart::Element("div".to_string()));
-        assert_eq!(rule.selector.parts[1], SelectorPart::PseudoElement("before".to_string()));
+        assert_eq!(rule.selectors.first().unwrap().groups[0].parts.len(), 2);
+        assert_eq!(rule.selectors.first().unwrap().groups[0].parts[0], SelectorPart::Element("div".to_string()));
+        assert_eq!(rule.selectors.first().unwrap().groups[0].parts[1], SelectorPart::PseudoElement("before".to_string()));
     }
 
     #[test]
@@ -274,5 +274,62 @@ mod tests {
         let decl = get_first_declaration(&stylesheet).unwrap();
         assert_eq!(decl.property, "content");
         assert!(matches!(decl.value, Value::QuotedString(ref content) if content == "This content { has } some { reserved characters }"));
+    }
+    
+    #[test]
+    fn test_calc() {
+        let css = r#"
+        .nightmare-calc {
+    width: calc(
+            min(
+            100% - 2 * max(var(--sidebar-width, 300px), 20vw),
+            (100vw - 4rem) / 2
+            ) +
+            clamp(
+            1rem,
+            (2vh + 1vw) * 0.5,
+            3rem
+            ) -
+            (var(--padding, 8px) * (1 + var(--scale-factor, 0.25)))
+    );
+
+    margin: calc(((10px + 2em) * 1.5) / (3vh - 1rem) + max(5%, 10px) - var(--margin, 2rem));
+
+    transform: translate(
+            calc(50% + min(var(--offset-x, 10px), 5vw) * (var(--direction, -1))),
+            calc(clamp(0px, var(--offset-y, 20px) / 2, 50px) - 10px)
+    );
+
+    grid-template-columns: calc(20% + 1fr * (2 / 3)) calc(1fr - 0.5 * var(--gap, 16px)) auto;
+}
+        "#;
+        let stylesheet = parse(css).unwrap();
+
+        assert_eq!(stylesheet.rules.len(), 1);
+        let rule = &stylesheet.rules[0];
+
+        assert_eq!(rule.selectors.first().unwrap().groups.first().unwrap().parts.len(), 1);
+        assert_eq!(rule.selectors.first().unwrap().groups.first().unwrap().parts[0], SelectorPart::Class("nightmare-calc".to_string()));
+
+        assert_eq!(rule.declarations.len(), 4);
+
+        let width = &rule.declarations[0];
+        assert_eq!(width.property, "width");
+        assert!(matches!(width.value, Value::Calc(_)));
+
+        let margin = &rule.declarations[1];
+        assert_eq!(margin.property, "margin");
+        assert!(matches!(margin.value, Value::Calc(_)));
+
+        let transform = &rule.declarations[2];
+        assert_eq!(transform.property, "transform");
+        assert!(matches!(transform.value, Value::Function(ref name, _) if name == "translate"));
+
+        let grid = &rule.declarations[3];
+        assert_eq!(grid.property, "grid-template-columns");
+        
+        assert!(matches!(grid.value, Value::List(ref items, ListSeparator::Space) if items.len() == 3));
+        
+        // TODO
     }
 }

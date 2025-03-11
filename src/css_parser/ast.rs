@@ -22,16 +22,95 @@ impl fmt::Display for SelectorPart {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Selector {
+pub enum SelectorCombinator {
+    Descendant,      // Space
+    Child,           // >
+    AdjacentSibling, // +
+    GeneralSibling,  // ~
+}
+
+impl fmt::Display for SelectorCombinator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SelectorCombinator::Descendant => write!(f, " "),
+            SelectorCombinator::Child => write!(f, " > "),
+            SelectorCombinator::AdjacentSibling => write!(f, " + "),
+            SelectorCombinator::GeneralSibling => write!(f, " ~ "),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SelectorGroup {
     pub parts: Vec<SelectorPart>,
 }
 
-impl fmt::Display for Selector {
+impl fmt::Display for SelectorGroup {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for part in &self.parts {
             write!(f, "{}", part)?;
         }
         Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Selector {
+    pub groups: Vec<SelectorGroup>,
+    pub combinators: Vec<SelectorCombinator>,
+}
+
+impl fmt::Display for Selector {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.groups.is_empty() {
+            return Ok(());
+        }
+
+        write!(f, "{}", self.groups[0])?;
+
+        for i in 0..self.combinators.len() {
+            if i < self.groups.len() - 1 {
+                write!(f, "{}{}", self.combinators[i], self.groups[i + 1])?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub enum AtRuleType {
+    Media,
+    Keyframes,
+    Import,
+    FontFace,
+    Supports,
+    Unknown(String),
+}
+
+#[derive(Debug)]
+pub struct AtRule {
+    pub rule_type: AtRuleType,
+    pub query: String,
+    pub rules: Vec<Rule>,
+}
+
+impl fmt::Display for AtRule {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.rule_type {
+            AtRuleType::Media => write!(f, "@media ")?,
+            AtRuleType::Keyframes => write!(f, "@keyframes ")?,
+            AtRuleType::Import => write!(f, "@import ")?,
+            AtRuleType::FontFace => write!(f, "@font-face ")?,
+            AtRuleType::Supports => write!(f, "@supports ")?,
+            AtRuleType::Unknown(ref name) => write!(f, "@{} ", name)?,
+        }
+
+        writeln!(f, "{} {{", self.query)?;
+        for rule in &self.rules {
+            write!(f, "    {}", rule)?;
+        }
+        writeln!(f, "}}")
     }
 }
 
@@ -109,16 +188,67 @@ pub enum ListSeparator {
     Comma,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum CalcOperator {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+}
+
+impl fmt::Display for CalcOperator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CalcOperator::Add => write!(f, " + "),
+            CalcOperator::Subtract => write!(f, " - "),
+            CalcOperator::Multiply => write!(f, " * "),
+            CalcOperator::Divide => write!(f, " / "),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CalcExpression {
+    Number(f64, Option<Unit>),
+    Variable(String),
+    BinaryOperation(Box<CalcExpression>, CalcOperator, Box<CalcExpression>),
+    Function(String, Vec<CalcExpression>),
+    Parenthesized(Box<CalcExpression>),
+}
+
+impl fmt::Display for CalcExpression {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CalcExpression::Number(num, None) => write!(f, "{}", num),
+            CalcExpression::Number(num, Some(unit)) => write!(f, "{}{}", num, unit),
+            CalcExpression::Variable(name) => write!(f, "var({})", name),
+            CalcExpression::BinaryOperation(left, op, right) => write!(f, "{}{}{}", left, op, right),
+            CalcExpression::Function(name, args) => {
+                write!(f, "{}(", name)?;
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", arg)?;
+                }
+                write!(f, ")")
+            },
+            CalcExpression::Parenthesized(expr) => write!(f, "({})", expr),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Value {
-    Literal(String),                              // Basic literals
-    QuotedString(String),                         // "example"
-    Number(f64, Option<Unit>),                    // 10px, 2em, 1.5
-    Color(Color),                                 // #333, rgb(), etc.
-    Function(String, Vec<Value>),                 // calc(), linear-gradient()
-    VarFunction(String, Option<Box<Value>>),      // var(--name, fallback)
-    List(Vec<Value>, ListSeparator),              // space or comma-separated values
-    Keyword(String),                              // inherit, auto, etc.
+    Literal(String),
+    QuotedString(String),
+    Number(f64, Option<Unit>),
+    Color(Color),
+    Function(String, Vec<Value>),
+    VarFunction(String, Option<Box<Value>>),
+    List(Vec<Value>, ListSeparator),
+    Keyword(String),
+    Calc(CalcExpression),
 }
 
 impl fmt::Display for Value {
@@ -166,6 +296,7 @@ impl fmt::Display for Value {
                 Ok(())
             },
             Value::Keyword(keyword) => write!(f, "{}", keyword),
+            Value::Calc(expr) => write!(f, "calc({})", expr),
         }
     }
 }
@@ -185,13 +316,20 @@ impl fmt::Display for Declaration {
 
 #[derive(Debug)]
 pub struct Rule {
-    pub selector: Selector,
+    pub selectors: Vec<Selector>,
     pub declarations: Vec<Declaration>,
 }
 
 impl fmt::Display for Rule {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "{} {{", self.selector)?;
+        for (i, selector) in self.selectors.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}", selector)?;
+        }
+
+        writeln!(f, " {{")?;
         for decl in &self.declarations {
             writeln!(f, "    {}", decl)?;
         }
@@ -202,6 +340,7 @@ impl fmt::Display for Rule {
 #[derive(Debug)]
 pub struct Stylesheet {
     pub rules: Vec<Rule>,
+    pub at_rules: Vec<AtRule>,
 }
 
 impl fmt::Display for Stylesheet {
@@ -209,6 +348,11 @@ impl fmt::Display for Stylesheet {
         for rule in &self.rules {
             write!(f, "{}", rule)?;
         }
+
+        for at_rule in &self.at_rules {
+            write!(f, "{}", at_rule)?;
+        }
+
         Ok(())
     }
 }

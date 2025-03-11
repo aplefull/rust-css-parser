@@ -67,7 +67,6 @@ impl CssParser {
         }
     }
 
-    // Token management methods
     fn next_token(&mut self) -> Option<Token> {
         let current = self.current_token.take();
         if current.as_ref().map_or(false, |t| matches!(t.token_type, TokenType::EOF)) {
@@ -82,7 +81,6 @@ impl CssParser {
         self.current_token.as_ref()
     }
 
-    // Helper methods for expecting specific tokens
     fn expect_open_brace(&mut self) -> Result<(), String> {
         if let Some(token) = self.next_token() {
             match token.token_type {
@@ -116,42 +114,174 @@ impl CssParser {
         }
     }
 
-    // Main parsing methods
     pub fn parse_stylesheet(&mut self) -> Result<Stylesheet, String> {
-        let mut stylesheet = Stylesheet { rules: Vec::new() };
+        let mut rules = Vec::new();
+        let mut at_rules = Vec::new();
         let start_time = std::time::Instant::now();
 
         while self.peek_token().is_some() &&
             !matches!(self.peek_token().unwrap().token_type, TokenType::EOF) {
+
+            if let Some(token) = self.peek_token() {
+                match &token.token_type {
+                    TokenType::AtSymbol => {
+                        let at_rule = self.parse_at_rule()?;
+                        at_rules.push(at_rule);
+                        continue;
+                    },
+                    _ => {}
+                }
+            }
+
             let rule = self.parse_rule()?;
-            stylesheet.rules.push(rule);
+            rules.push(rule);
         }
 
         let elapsed = start_time.elapsed();
-        println!("Parsed {} rules in {:?}", stylesheet.rules.len(), elapsed);
+        println!("Parsed {} rules and {} at-rules in {:?}", rules.len(), at_rules.len(), elapsed);
 
-        Ok(stylesheet)
+        Ok(Stylesheet { rules, at_rules })
     }
 
     fn parse_rule(&mut self) -> Result<Rule, String> {
-        let selector = self.parse_selector()?;
+        let first_selector = self.parse_selector()?;
+        let mut selectors = vec![first_selector];
+
+        while let Some(token) = self.peek_token() {
+            if matches!(token.token_type, TokenType::Comma) {
+                self.next_token();
+
+                let next_selector = self.parse_selector()?;
+                selectors.push(next_selector);
+            } else {
+                break;
+            }
+        }
+
         self.expect_open_brace()?;
         let declarations = self.parse_declarations()?;
         self.expect_close_brace()?;
 
         Ok(Rule {
-            selector,
+            selectors,
             declarations,
         })
     }
+    
+    fn parse_at_rule(&mut self) -> Result<AtRule, String> {
+        self.next_token();
+
+        let rule_type = if let Some(token) = self.next_token() {
+            match &token.token_type {
+                TokenType::Identifier(name) => {
+                    match name.to_lowercase().as_str() {
+                        "media" => AtRuleType::Media,
+                        "keyframes" => AtRuleType::Keyframes,
+                        "import" => AtRuleType::Import,
+                        "font-face" => AtRuleType::FontFace,
+                        "supports" => AtRuleType::Supports,
+                        _ => AtRuleType::Unknown(name.clone()),
+                    }
+                },
+                _ => return Err(format!("Expected identifier after @, found {:?}", token.token_type)),
+            }
+        } else {
+            return Err("Unexpected end of input after @".to_string());
+        };
+
+        let mut query = String::new();
+        while let Some(token) = self.peek_token() {
+            match &token.token_type {
+                TokenType::OpenBrace => break,
+                _ => {
+                    let token = self.next_token().unwrap();
+                    query.push_str(&format!("{} ", token.token_type));
+                }
+            }
+        }
+
+        query = query.trim().to_string();
+
+        self.expect_open_brace()?;
+
+        if matches!(rule_type, AtRuleType::Import) {
+            while let Some(token) = self.peek_token() {
+                if matches!(token.token_type, TokenType::Semicolon) {
+                    self.next_token();
+                    break;
+                } else {
+                    self.next_token();
+                }
+            }
+            return Ok(AtRule { rule_type, query, rules: Vec::new() });
+        }
+
+        let mut rules = Vec::new();
+
+        while let Some(token) = self.peek_token() {
+            match &token.token_type {
+                TokenType::CloseBrace => {
+                    self.next_token();
+                    break;
+                },
+                _ => {
+                    let rule = self.parse_rule()?;
+                    rules.push(rule);
+                }
+            }
+        }
+
+        Ok(AtRule { rule_type, query, rules })
+    }
 
     fn parse_selector(&mut self) -> Result<Selector, String> {
+        let mut groups = Vec::new();
+        let mut combinators = Vec::new();
+
+        let first_group = self.parse_selector_group()?;
+        groups.push(first_group);
+
+        while let Some(token) = self.peek_token() {
+            match &token.token_type {
+                TokenType::GreaterThan => {
+                    self.next_token();
+                    combinators.push(SelectorCombinator::Child);
+                    let next_group = self.parse_selector_group()?;
+                    groups.push(next_group);
+                },
+                TokenType::Plus => {
+                    self.next_token();
+                    combinators.push(SelectorCombinator::AdjacentSibling);
+                    let next_group = self.parse_selector_group()?;
+                    groups.push(next_group);
+                },
+                TokenType::Tilde => {
+                    self.next_token();
+                    combinators.push(SelectorCombinator::GeneralSibling);
+                    let next_group = self.parse_selector_group()?;
+                    groups.push(next_group);
+                },
+                TokenType::Identifier(_) | TokenType::Dot | TokenType::Hash |
+                TokenType::Colon | TokenType::Asterisk => {
+                    combinators.push(SelectorCombinator::Descendant);
+                    let next_group = self.parse_selector_group()?;
+                    groups.push(next_group);
+                },
+                TokenType::OpenBrace => break,
+                _ => break,
+            }
+        }
+
+        Ok(Selector { groups, combinators })
+    }
+
+    fn parse_selector_group(&mut self) -> Result<SelectorGroup, String> {
         let mut parts = Vec::new();
         let mut first_part = true;
 
         while let Some(token) = self.peek_token() {
             match &token.token_type {
-                TokenType::OpenBrace => break,
+                TokenType::OpenBrace | TokenType::GreaterThan | TokenType::Plus | TokenType::Tilde => break,
                 TokenType::Identifier(_) | TokenType::Dot | TokenType::Hash |
                 TokenType::Colon | TokenType::Asterisk => {
                     let part = self.parse_selector_part(first_part)?;
@@ -166,14 +296,14 @@ impl CssParser {
             return Err("Expected at least one selector part".to_string());
         }
 
-        Ok(Selector { parts })
+        Ok(SelectorGroup { parts })
     }
 
     fn parse_selector_part(&mut self, allow_element: bool) -> Result<SelectorPart, String> {
         if let Some(token) = self.peek_token() {
             match &token.token_type {
                 TokenType::Dot => {
-                    self.next_token(); // Consume dot
+                    self.next_token();
                     match self.next_token() {
                         Some(token) => {
                             if let TokenType::Identifier(name) = token.token_type {
@@ -186,7 +316,7 @@ impl CssParser {
                     }
                 },
                 TokenType::Hash => {
-                    self.next_token(); // Consume hash
+                    self.next_token();
                     match self.next_token() {
                         Some(token) => {
                             if let TokenType::Identifier(name) = token.token_type {
@@ -199,7 +329,7 @@ impl CssParser {
                     }
                 },
                 TokenType::Colon => {
-                    self.next_token(); // Consume colon
+                    self.next_token();
                     match self.next_token() {
                         Some(token) => {
                             if let TokenType::Identifier(name) = token.token_type {
@@ -212,12 +342,12 @@ impl CssParser {
                     }
                 },
                 TokenType::Asterisk => {
-                    self.next_token(); // Consume asterisk
+                    self.next_token();
                     Ok(SelectorPart::Universal)
                 },
                 TokenType::Identifier(name) if allow_element => {
                     let name = name.clone();
-                    self.next_token(); // Consume identifier
+                    self.next_token();
                     Ok(SelectorPart::Element(name))
                 },
                 _ => Err(format!("Unexpected token in selector: {:?}", token.token_type)),
@@ -231,7 +361,6 @@ impl CssParser {
         let mut declarations = Vec::new();
 
         loop {
-            // Skip any semicolons before declarations
             while let Some(token) = self.peek_token() {
                 if matches!(token.token_type, TokenType::Semicolon) {
                     self.next_token();
@@ -240,7 +369,6 @@ impl CssParser {
                 }
             }
 
-            // Check if we've reached the end of declarations
             if let Some(token) = self.peek_token() {
                 if matches!(token.token_type, TokenType::CloseBrace) {
                     break;
@@ -249,14 +377,12 @@ impl CssParser {
                 return Err("Unexpected end of input while parsing declarations".to_string());
             }
 
-            // Parse a declaration
             let declaration = self.parse_declaration()?;
             declarations.push(declaration);
 
-            // Expect a semicolon or closing brace
             match self.peek_token() {
                 Some(token) if matches!(token.token_type, TokenType::Semicolon) => {
-                    self.next_token(); // Consume semicolon
+                    self.next_token();
                 },
                 Some(token) if matches!(token.token_type, TokenType::CloseBrace) => {
                     break;
@@ -272,19 +398,16 @@ impl CssParser {
 
         Ok(declarations)
     }
-    
+
     fn parse_value(&mut self) -> Result<Value, String> {
-        // This will replace our simplified parse_simple_value
         if let Some(token) = self.peek_token() {
             match &token.token_type {
                 TokenType::Identifier(name) => {
-                    // Check if this is a function
                     let name_clone = name.clone();
-                    self.next_token(); // Consume the identifier
+                    self.next_token();
 
                     if let Some(next) = self.peek_token() {
                         if matches!(next.token_type, TokenType::OpenParen) {
-                            // This is a function
                             return if name_clone == "var" {
                                 self.parse_var_function()
                             } else {
@@ -293,7 +416,6 @@ impl CssParser {
                         }
                     }
 
-                    // Not a function, handle as identifier
                     if is_color_name(&name_clone) {
                         Ok(Value::Color(Color::Named(name_clone)))
                     } else if is_css_keyword(&name_clone) {
@@ -305,17 +427,16 @@ impl CssParser {
                 TokenType::Number(_) => self.parse_number(),
                 TokenType::String(text) => {
                     let text_clone = text.clone();
-                    self.next_token(); // Consume the string
+                    self.next_token();
                     Ok(Value::QuotedString(text_clone))
                 },
                 TokenType::Hash => self.parse_hex_color(),
                 TokenType::HexColor(hex) => {
                     let hex_clone = hex.clone();
-                    self.next_token(); // Consume token
+                    self.next_token();
                     Ok(Value::Color(Color::Hex(format!("#{}", hex_clone))))
                 },
                 _ => {
-                    // For other token types, try to parse a literal
                     let token = self.next_token().unwrap();
                     Ok(Value::Literal(format!("{}", token.token_type)))
                 }
@@ -328,10 +449,9 @@ impl CssParser {
     fn parse_number(&mut self) -> Result<Value, String> {
         if let Some(token) = self.next_token() {
             if let TokenType::Number(num) = token.token_type {
-                // Check for unit
                 if let Some(next) = self.peek_token().cloned() {
                     if let TokenType::Unit(unit_str) = &next.token_type {
-                        self.next_token(); // Consume unit token
+                        self.next_token();
                         let unit = match unit_str.as_str() {
                             "px" => Unit::Px,
                             "em" => Unit::Em,
@@ -364,14 +484,13 @@ impl CssParser {
     }
 
     fn parse_hex_color(&mut self) -> Result<Value, String> {
-        self.next_token(); // Consume hash token
+        self.next_token();
 
         if let Some(token) = self.next_token() {
             if let TokenType::HexColor(hex) = token.token_type {
                 println!("Parsed hex color: {}", hex);
                 Ok(Value::Color(Color::Hex(format!("#{}", hex))))
             } else if let TokenType::Identifier(name) = token.token_type {
-                // Handle case where lexer didn't recognize it as HexColor
                 if name.chars().all(|c| c.is_digit(16)) {
                     Ok(Value::Color(Color::Hex(format!("#{}", name))))
                 } else {
@@ -388,43 +507,45 @@ impl CssParser {
     fn parse_function(&mut self, name: String) -> Result<Value, String> {
         self.expect_open_paren()?;
 
-        if name == "calc" {
+        if name.to_lowercase() == "calc" {
             return self.parse_calc_function();
+        }
+
+        let math_functions = ["min", "max", "clamp"];
+        if math_functions.contains(&name.to_lowercase().as_str()) {
+            let expression = self.parse_calc_expression()?;
+            self.expect_close_paren()?;
+            return Ok(Value::Calc(CalcExpression::Function(name, vec![expression])));
         }
 
         let color_functions = [
             "rgb", "rgba", "hsl", "hsla", "hwb", "lab", "lch", "color"
         ];
 
-        // Special handling for color functions
         if color_functions.contains(&name.as_str()) {
             return self.parse_color_function(name);
         }
 
-        // Parse function arguments
         let mut arguments = Vec::new();
 
-        // Check for empty function
         if let Some(token) = self.peek_token() {
             if matches!(token.token_type, TokenType::CloseParen) {
-                self.next_token(); // Consume closing parenthesis
+                self.next_token();
                 return Ok(Value::Function(name, arguments));
             }
         }
 
-        // Parse arguments
         loop {
             let arg = self.parse_function_argument()?;
             arguments.push(arg);
 
-            // Check for comma or closing parenthesis
             if let Some(token) = self.peek_token() {
                 match &token.token_type {
                     TokenType::Comma => {
-                        self.next_token(); // Consume comma
+                        self.next_token(); 
                     },
                     TokenType::CloseParen => {
-                        self.next_token(); // Consume closing parenthesis
+                        self.next_token();
                         break;
                     },
                     _ => return Err(format!("Expected comma or closing parenthesis, found {:?}", token.token_type)),
@@ -438,179 +559,242 @@ impl CssParser {
     }
 
     fn parse_calc_function(&mut self) -> Result<Value, String> {
-        // TODO
-        Err("calc function not implemented".to_string())
+        let expression = self.parse_calc_expression()?;
+
+        self.expect_close_paren()?;
+
+        Ok(Value::Calc(expression))
     }
 
-    fn parse_color_function(&mut self, function_name: String) -> Result<Value, String> {
-        // Track if we've seen a slash for alpha
-        let mut has_slash = false;
-        let mut components = Vec::new();
+    fn parse_calc_expression(&mut self) -> Result<CalcExpression, String> {
+        self.parse_calc_add_sub()
+    }
 
-        // Parse until we reach the closing parenthesis
-        while let Some(token) = self.peek_token() {
+    fn parse_calc_add_sub(&mut self) -> Result<CalcExpression, String> {
+        let mut left = self.parse_calc_mul_div()?;
+
+        loop {
+            if let Some(token) = self.peek_token() {
+                match &token.token_type {
+                    TokenType::Plus => {
+                        self.next_token();
+                        let right = self.parse_calc_mul_div()?;
+                        left = CalcExpression::BinaryOperation(
+                            Box::new(left),
+                            CalcOperator::Add,
+                            Box::new(right)
+                        );
+                    },
+                    TokenType::Minus => {
+                        self.next_token();
+                        let right = self.parse_calc_mul_div()?;
+                        left = CalcExpression::BinaryOperation(
+                            Box::new(left),
+                            CalcOperator::Subtract,
+                            Box::new(right)
+                        );
+                    },
+                    TokenType::Identifier(name) if name == "-" => {
+                        self.next_token();
+                        let right = self.parse_calc_mul_div()?;
+                        left = CalcExpression::BinaryOperation(
+                            Box::new(left),
+                            CalcOperator::Subtract,
+                            Box::new(right)
+                        );
+                    },
+                    _ => break,
+                }
+            } else {
+                break;
+            }
+        }
+
+        Ok(left)
+    }
+
+    fn parse_calc_mul_div(&mut self) -> Result<CalcExpression, String> {
+        let mut left = self.parse_calc_primary()?;
+
+        loop {
+            if let Some(token) = self.peek_token() {
+                match &token.token_type {
+                    TokenType::Asterisk => {
+                        self.next_token();
+                        let right = self.parse_calc_primary()?;
+                        left = CalcExpression::BinaryOperation(
+                            Box::new(left),
+                            CalcOperator::Multiply,
+                            Box::new(right)
+                        );
+                    },
+                    TokenType::Slash => {
+                        self.next_token();
+                        let right = self.parse_calc_primary()?;
+                        left = CalcExpression::BinaryOperation(
+                            Box::new(left),
+                            CalcOperator::Divide,
+                            Box::new(right)
+                        );
+                    },
+                    TokenType::Identifier(name) if name == "/" => {
+                        self.next_token();
+                        let right = self.parse_calc_primary()?;
+                        left = CalcExpression::BinaryOperation(
+                            Box::new(left),
+                            CalcOperator::Divide,
+                            Box::new(right)
+                        );
+                    },
+                    _ => break,
+                }
+            } else {
+                break;
+            }
+        }
+
+        Ok(left)
+    }
+
+    fn parse_calc_primary(&mut self) -> Result<CalcExpression, String> {
+        if let Some(token) = self.peek_token() {
             match &token.token_type {
-                TokenType::CloseParen => {
-                    self.next_token(); // Consume closing parenthesis
-                    break;
+                TokenType::Number(_) => {
+                    let (num, unit) = self.parse_number_with_unit()?;
+                    Ok(CalcExpression::Number(num, unit))
                 },
-                TokenType::Slash => {
-                    if has_slash {
-                        return Err("Multiple slashes in color function not allowed".to_string());
+                TokenType::Identifier(name) if name == "var" => {
+                    let var_name = self.parse_var_name()?;
+                    Ok(CalcExpression::Variable(var_name))
+                },
+                TokenType::Identifier(name) if name == "-" => {
+                    self.next_token();
+                    let expr = self.parse_calc_primary()?;
+
+                    Ok(CalcExpression::BinaryOperation(
+                        Box::new(CalcExpression::Number(0.0, None)),
+                        CalcOperator::Subtract,
+                        Box::new(expr)
+                    ))
+                },
+                TokenType::Identifier(name) => {
+                    let name_clone = name.clone();
+                    self.next_token();
+
+                    if let Some(token) = self.peek_token() {
+                        if matches!(token.token_type, TokenType::OpenParen) {
+                            self.next_token();
+
+                            let mut args = Vec::new();
+
+                            if let Some(token) = self.peek_token() {
+                                if matches!(token.token_type, TokenType::CloseParen) {
+                                    self.next_token();
+                                    return Ok(CalcExpression::Function(name_clone, args));
+                                }
+                            }
+
+                            let arg = self.parse_calc_expression()?;
+                            args.push(arg);
+
+                            while let Some(token) = self.peek_token() {
+                                match &token.token_type {
+                                    TokenType::Comma => {
+                                        self.next_token();
+                                        let arg = self.parse_calc_expression()?;
+                                        args.push(arg);
+                                    },
+                                    TokenType::CloseParen => {
+                                        self.next_token();
+                                        break;
+                                    },
+                                    _ => return Err(format!("Expected comma or closing parenthesis, found {:?}", token.token_type)),
+                                }
+                            }
+
+                            return Ok(CalcExpression::Function(name_clone, args));
+                        }
                     }
-                    has_slash = true;
-                    self.next_token(); // Consume slash
-                    // The next value should be the alpha component
-                    continue;
+
+                    Ok(CalcExpression::Number(0.0, None))
                 },
-                TokenType::Comma => {
-                    // Traditional syntax with commas
-                    self.next_token(); // Consume comma
-                    continue;
-                },
-                _ => {
-                    // Parse the next component
-                    let component = self.parse_value()?;
-                    components.push(component);
-                }
-            }
-        }
+                TokenType::OpenParen => {
+                    self.next_token();
+                    let expr = self.parse_calc_expression()?;
 
-        // Convert to the appropriate color type based on the function name
-        match function_name.as_str() {
-            "rgb" | "rgba" => {
-                if components.len() < 3 || components.len() > 4 {
-                    return Err(format!("RGB function requires 3 or 4 components, found {}", components.len()));
-                }
-
-                let r = self.extract_component(&components[0])?;
-                let g = self.extract_component(&components[1])?;
-                let b = self.extract_component(&components[2])?;
-
-                if components.len() == 4 || has_slash {
-                    // We have an alpha component
-                    let alpha_idx = if has_slash { 3 } else { 3 };
-                    if alpha_idx < components.len() {
-                        let a = self.extract_alpha(&components[alpha_idx])?;
-                        Ok(Value::Color(Color::Rgba(r, g, b, a)))
+                    if let Some(token) = self.next_token() {
+                        if matches!(token.token_type, TokenType::CloseParen) {
+                            return Ok(CalcExpression::Parenthesized(Box::new(expr)));
+                        } else {
+                            return Err(format!("Expected closing parenthesis, found {:?}", token.token_type));
+                        }
                     } else {
-                        Err("Expected alpha component after slash".to_string())
+                        return Err("Unexpected end of input while parsing parenthesized expression".to_string());
                     }
-                } else {
-                    // No alpha
-                    Ok(Value::Color(Color::Rgb(r, g, b)))
-                }
-            },
-            "hsl" | "hsla" => {
-                if components.len() < 3 || components.len() > 4 {
-                    return Err(format!("HSL function requires 3 or 4 components, found {}", components.len()));
-                }
+                },
+                TokenType::Plus => {
+                    self.next_token();
+                    self.parse_calc_primary()
+                },
+                TokenType::Minus => {
+                    self.next_token();
+                    let expr = self.parse_calc_primary()?;
 
-                let h = self.extract_hue(&components[0])?;
-                let s = self.extract_percentage(&components[1])?;
-                let l = self.extract_percentage(&components[2])?;
-
-                if components.len() == 4 || has_slash {
-                    // We have an alpha component
-                    let alpha_idx = if has_slash { 3 } else { 3 };
-                    if alpha_idx < components.len() {
-                        let a = self.extract_alpha(&components[alpha_idx])?;
-                        Ok(Value::Color(Color::Hsla(h, s, l, a)))
-                    } else {
-                        Err("Expected alpha component after slash".to_string())
-                    }
-                } else {
-                    // No alpha
-                    Ok(Value::Color(Color::Hsl(h, s, l)))
-                }
-            },
-            "hwb" => {
-                if components.len() < 3 {
-                    return Err(format!("HWB function requires at least 3 components, found {}", components.len()));
-                }
-
-                // Since we don't have a dedicated HWB type, we'll use the Function type
-                Ok(Value::Function("hwb".to_string(), components))
-            },
-            "lab" => {
-                if components.len() < 3 {
-                    return Err(format!("LAB function requires at least 3 components, found {}", components.len()));
-                }
-
-                // Since we don't have a dedicated LAB type, we'll use the Function type
-                Ok(Value::Function("lab".to_string(), components))
-            },
-            "lch" => {
-                if components.len() < 3 {
-                    return Err(format!("LCH function requires at least 3 components, found {}", components.len()));
-                }
-
-                // Since we don't have a dedicated LCH type, we'll use the Function type
-                Ok(Value::Function("lch".to_string(), components))
-            },
-            "color" => {
-                if components.len() < 1 {
-                    return Err("Color function requires a color space parameter".to_string());
-                }
-
-                // Since we don't have a dedicated type for the color() function, we'll use the Function type
-                Ok(Value::Function("color".to_string(), components))
-            },
-            _ => {
-                // This shouldn't happen based on our function name check
-                Err(format!("Unsupported color function: {}", function_name))
+                    Ok(CalcExpression::BinaryOperation(
+                        Box::new(CalcExpression::Number(0.0, None)),
+                        CalcOperator::Subtract,
+                        Box::new(expr)
+                    ))
+                },
+                _ => Err(format!("Unexpected token in calc expression: {:?}", token.token_type)),
             }
+        } else {
+            Err("Unexpected end of input while parsing calc expression".to_string())
         }
     }
 
-    fn extract_component(&self, value: &Value) -> Result<u8, String> {
-        match value {
-            Value::Number(num, _) => {
-                // Clamp to 0-255 range
-                let clamped = num.max(0.0).min(255.0);
-                Ok(clamped as u8)
-            },
-            _ => Err(format!("Expected number for color component, found {:?}", value)),
+    fn parse_number_with_unit(&mut self) -> Result<(f64, Option<Unit>), String> {
+        if let Some(token) = self.next_token() {
+            if let TokenType::Number(num) = token.token_type {
+                if let Some(next) = self.peek_token().cloned() {
+                    if let TokenType::Unit(unit_str) = &next.token_type {
+                        self.next_token();
+                        let unit = match unit_str.as_str() {
+                            "px" => Unit::Px,
+                            "em" => Unit::Em,
+                            "rem" => Unit::Rem,
+                            "%" => Unit::Percent,
+                            "vh" => Unit::Vh,
+                            "vw" => Unit::Vw,
+                            "pt" => Unit::Pt,
+                            "cm" => Unit::Cm,
+                            "mm" => Unit::Mm,
+                            "in" => Unit::In,
+                            "deg" => Unit::Deg,
+                            "rad" => Unit::Rad,
+                            "fr" => Unit::Fr,
+                            "s" => Unit::S,
+                            "ms" => Unit::Ms,
+                            _ => Unit::Other(unit_str.clone()),
+                        };
+                        return Ok((num, Some(unit)));
+                    }
+                }
+
+                Ok((num, None))
+            } else {
+                Err(format!("Expected number, found {:?}", token.token_type))
+            }
+        } else {
+            Err("Unexpected end of input while parsing number".to_string())
         }
     }
 
-    fn extract_hue(&self, value: &Value) -> Result<u16, String> {
-        match value {
-            Value::Number(num, _) => {
-                // Wrap hue values to 0-360 range
-                let wrapped = num.rem_euclid(360.0);
-                Ok(wrapped as u16)
-            },
-            _ => Err(format!("Expected number for hue component, found {:?}", value)),
-        }
-    }
+    fn parse_var_name(&mut self) -> Result<String, String> {
+        self.next_token();
 
-    fn extract_percentage(&self, value: &Value) -> Result<u8, String> {
-        match value {
-            Value::Number(num, Some(Unit::Percent)) => {
-                // Clamp to 0-100 range
-                let clamped = num.max(0.0).min(100.0);
-                Ok(clamped as u8)
-            },
-            _ => Err(format!("Expected percentage for saturation/lightness component, found {:?}", value)),
-        }
-    }
-
-    fn extract_alpha(&self, value: &Value) -> Result<f32, String> {
-        match value {
-            Value::Number(num, _) => {
-                // Clamp to 0-1 range
-                let clamped = num.max(0.0).min(1.0);
-                Ok(clamped as f32)
-            },
-            _ => Err(format!("Expected number for alpha component, found {:?}", value)),
-        }
-    }
-
-    fn parse_var_function(&mut self) -> Result<Value, String> {
         self.expect_open_paren()?;
 
-        // Parse variable name
         let variable_name = match self.next_token() {
             Some(token) => {
                 if let TokenType::Identifier(name) = token.token_type {
@@ -625,10 +809,200 @@ impl CssParser {
             None => return Err("Unexpected end of input while parsing var function".to_string()),
         };
 
-        // Check for fallback value
+        let mut paren_depth = 1;
+        while paren_depth > 0 {
+            if let Some(token) = self.peek_token() {
+                match &token.token_type {
+                    TokenType::OpenParen => {
+                        paren_depth += 1;
+                        self.next_token();
+                    },
+                    TokenType::CloseParen => {
+                        paren_depth -= 1;
+                        if paren_depth > 0 {
+                            self.next_token();
+                        }
+                    },
+                    _ => {
+                        self.next_token();
+                    }
+                }
+            } else {
+                return Err("Unexpected end of input while parsing var function".to_string());
+            }
+        }
+
+        self.next_token();
+
+        Ok(variable_name)
+    }
+
+    fn parse_color_function(&mut self, function_name: String) -> Result<Value, String> {
+        let mut has_slash = false;
+        let mut components = Vec::new();
+
+        while let Some(token) = self.peek_token() {
+            match &token.token_type {
+                TokenType::CloseParen => {
+                    self.next_token();
+                    break;
+                },
+                TokenType::Slash => {
+                    if has_slash {
+                        return Err("Multiple slashes in color function not allowed".to_string());
+                    }
+                    has_slash = true;
+                    self.next_token();
+                    continue;
+                },
+                TokenType::Comma => {
+                    self.next_token();
+                    continue;
+                },
+                _ => {
+                    let component = self.parse_value()?;
+                    components.push(component);
+                }
+            }
+        }
+
+        match function_name.as_str() {
+            "rgb" | "rgba" => {
+                if components.len() < 3 || components.len() > 4 {
+                    return Err(format!("RGB function requires 3 or 4 components, found {}", components.len()));
+                }
+
+                let r = self.extract_component(&components[0])?;
+                let g = self.extract_component(&components[1])?;
+                let b = self.extract_component(&components[2])?;
+
+                if components.len() == 4 || has_slash {
+                    let alpha_idx = if has_slash { 3 } else { 3 };
+                    if alpha_idx < components.len() {
+                        let a = self.extract_alpha(&components[alpha_idx])?;
+                        Ok(Value::Color(Color::Rgba(r, g, b, a)))
+                    } else {
+                        Err("Expected alpha component after slash".to_string())
+                    }
+                } else {
+                    Ok(Value::Color(Color::Rgb(r, g, b)))
+                }
+            },
+            "hsl" | "hsla" => {
+                if components.len() < 3 || components.len() > 4 {
+                    return Err(format!("HSL function requires 3 or 4 components, found {}", components.len()));
+                }
+
+                let h = self.extract_hue(&components[0])?;
+                let s = self.extract_percentage(&components[1])?;
+                let l = self.extract_percentage(&components[2])?;
+
+                if components.len() == 4 || has_slash {
+                    let alpha_idx = if has_slash { 3 } else { 3 };
+                    if alpha_idx < components.len() {
+                        let a = self.extract_alpha(&components[alpha_idx])?;
+                        Ok(Value::Color(Color::Hsla(h, s, l, a)))
+                    } else {
+                        Err("Expected alpha component after slash".to_string())
+                    }
+                } else {
+                    Ok(Value::Color(Color::Hsl(h, s, l)))
+                }
+            },
+            "hwb" => {
+                if components.len() < 3 {
+                    return Err(format!("HWB function requires at least 3 components, found {}", components.len()));
+                }
+
+                Ok(Value::Function("hwb".to_string(), components))
+            },
+            "lab" => {
+                if components.len() < 3 {
+                    return Err(format!("LAB function requires at least 3 components, found {}", components.len()));
+                }
+
+                Ok(Value::Function("lab".to_string(), components))
+            },
+            "lch" => {
+                if components.len() < 3 {
+                    return Err(format!("LCH function requires at least 3 components, found {}", components.len()));
+                }
+
+                Ok(Value::Function("lch".to_string(), components))
+            },
+            "color" => {
+                if components.len() < 1 {
+                    return Err("Color function requires a color space parameter".to_string());
+                }
+
+                Ok(Value::Function("color".to_string(), components))
+            },
+            _ => {
+                Err(format!("Unsupported color function: {}", function_name))
+            }
+        }
+    }
+
+    fn extract_component(&self, value: &Value) -> Result<u8, String> {
+        match value {
+            Value::Number(num, _) => {
+                let clamped = num.max(0.0).min(255.0);
+                Ok(clamped as u8)
+            },
+            _ => Err(format!("Expected number for color component, found {:?}", value)),
+        }
+    }
+
+    fn extract_hue(&self, value: &Value) -> Result<u16, String> {
+        match value {
+            Value::Number(num, _) => {
+                let wrapped = num.rem_euclid(360.0);
+                Ok(wrapped as u16)
+            },
+            _ => Err(format!("Expected number for hue component, found {:?}", value)),
+        }
+    }
+
+    fn extract_percentage(&self, value: &Value) -> Result<u8, String> {
+        match value {
+            Value::Number(num, Some(Unit::Percent)) => {
+                let clamped = num.max(0.0).min(100.0);
+                Ok(clamped as u8)
+            },
+            _ => Err(format!("Expected percentage for saturation/lightness component, found {:?}", value)),
+        }
+    }
+
+    fn extract_alpha(&self, value: &Value) -> Result<f32, String> {
+        match value {
+            Value::Number(num, _) => {
+                let clamped = num.max(0.0).min(1.0);
+                Ok(clamped as f32)
+            },
+            _ => Err(format!("Expected number for alpha component, found {:?}", value)),
+        }
+    }
+
+    fn parse_var_function(&mut self) -> Result<Value, String> {
+        self.expect_open_paren()?;
+
+        let variable_name = match self.next_token() {
+            Some(token) => {
+                if let TokenType::Identifier(name) = token.token_type {
+                    if !name.starts_with("--") {
+                        return Err(format!("Variable name must start with --, found {}", name));
+                    }
+                    name
+                } else {
+                    return Err(format!("Expected variable name, found {:?}", token.token_type));
+                }
+            },
+            None => return Err("Unexpected end of input while parsing var function".to_string()),
+        };
+
         let fallback = if let Some(token) = self.peek_token() {
             if matches!(token.token_type, TokenType::Comma) {
-                self.next_token(); // Consume comma
+                self.next_token();
                 Some(Box::new(self.parse_function_argument()?))
             } else {
                 None
@@ -637,7 +1011,6 @@ impl CssParser {
             None
         };
 
-        // Expect closing parenthesis
         self.expect_close_paren()?;
 
         Ok(Value::VarFunction(variable_name, fallback))
@@ -648,7 +1021,6 @@ impl CssParser {
     }
 
     fn parse_declaration(&mut self) -> Result<Declaration, String> {
-        // Check for custom property
         let mut is_custom_property = false;
         if let Some(token) = self.peek_token() {
             if let TokenType::Identifier(name) = &token.token_type {
@@ -658,7 +1030,6 @@ impl CssParser {
             }
         }
 
-        // Parse property name
         let property = match self.next_token() {
             Some(token) => {
                 if let TokenType::Identifier(name) = token.token_type {
@@ -670,10 +1041,8 @@ impl CssParser {
             None => return Err("Unexpected end of input while parsing property".to_string()),
         };
 
-        // Expect colon
         self.expect_colon()?;
 
-        // Parse the value, which might be a list
         let value = self.parse_value_possibly_list()?;
 
         Ok(Declaration {
@@ -684,10 +1053,8 @@ impl CssParser {
     }
 
     fn parse_value_possibly_list(&mut self) -> Result<Value, String> {
-        // Parse the first value
         let first_value = self.parse_value()?;
 
-        // Check if there are more values to form a list
         let mut values = vec![first_value];
         let mut separator = None;
 
@@ -695,26 +1062,22 @@ impl CssParser {
             if let Some(token) = self.peek_token() {
                 match &token.token_type {
                     TokenType::Semicolon | TokenType::CloseBrace => {
-                        // End of the declaration, stop parsing
                         break;
                     },
                     TokenType::Comma => {
-                        // Comma-separated list
                         if separator.is_some() && separator != Some(ListSeparator::Comma) {
                             return Err("Mixed separators in list not allowed".to_string());
                         }
                         separator = Some(ListSeparator::Comma);
-                        self.next_token(); // Consume the comma
+                        self.next_token();
                         let next_value = self.parse_value()?;
                         values.push(next_value);
                     },
                     _ => {
-                        // Space-separated list (or error)
                         if separator.is_some() && separator != Some(ListSeparator::Space) {
                             return Err("Mixed separators in list not allowed".to_string());
                         }
 
-                        // Try to parse the next value
                         let result = self.parse_value();
                         match result {
                             Ok(next_value) => {
@@ -722,28 +1085,23 @@ impl CssParser {
                                 values.push(next_value);
                             },
                             Err(_) => {
-                                // Not a valid value, end of the list
                                 break;
                             }
                         }
                     }
                 }
             } else {
-                // End of input
                 break;
             }
         }
 
         if values.len() == 1 {
-            // Just a single value, not a list
             Ok(values.remove(0))
         } else {
-            // A list of values
             Ok(Value::List(values, separator.unwrap_or(ListSeparator::Space)))
         }
     }
 
-    // Helper methods for expecting specific tokens
     fn expect_open_paren(&mut self) -> Result<(), String> {
         if let Some(token) = self.next_token() {
             match token.token_type {
