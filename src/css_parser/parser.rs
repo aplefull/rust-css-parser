@@ -1274,7 +1274,16 @@ impl CssParser {
         let fallback = if let Some(token) = self.peek_token() {
             if matches!(token.token_type, TokenType::Comma) {
                 self.next_token();
-                Some(Box::new(self.parse_function_argument()?))
+
+                if let Some(next_token) = self.peek_token() {
+                    if matches!(next_token.token_type, TokenType::CloseParen) {
+                        Some(Box::new(Value::Literal("".to_string())))
+                    } else {
+                        Some(Box::new(self.parse_function_argument()?))
+                    }
+                } else {
+                    return Err("Unexpected end of input after comma in var function".to_string());
+                }
             } else {
                 None
             }

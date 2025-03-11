@@ -374,5 +374,6 @@ mod tests {
         
         // TODO .size2{font-size:calc(.28929605em + .2 / .00)}
         // TODO .size2{font-size: rgba(0 0 0 / 0.5%);}
+        // TODO --tw-ring-inset: var(--tw-empty, /*!*/ /*!*/);
     }
 }
