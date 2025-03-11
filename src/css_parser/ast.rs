@@ -1,12 +1,30 @@
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum AttributeOperator {
+    Exists,         // [attr]
+    Equals,         // [attr=value]
+    Includes,       // [attr~=value]
+    DashMatch,      // [attr|=value]
+    StartsWith,     // [attr^=value]
+    EndsWith,       // [attr$=value]
+    Contains,       // [attr*=value]
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CaseSensitivity {
+    Sensitive,      // Default or explicit 's'
+    Insensitive,    // 'i'
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum SelectorPart {
     Class(String),
     Id(String),
     Element(String),
     Universal,
     PseudoElement(String),
+    AttributeSelector(String, Option<(AttributeOperator, String, Option<CaseSensitivity>)>),
 }
 
 impl fmt::Display for SelectorPart {
@@ -17,6 +35,29 @@ impl fmt::Display for SelectorPart {
             SelectorPart::Element(name) => write!(f, "{}", name),
             SelectorPart::Universal => write!(f, "*"),
             SelectorPart::PseudoElement(name) => write!(f, ":{}", name),
+            SelectorPart::AttributeSelector(attr, None) => write!(f, "[{}]", attr),
+            SelectorPart::AttributeSelector(attr, Some((op, value, case_sensitivity))) => {
+                match op {
+                    AttributeOperator::Exists => write!(f, "[{}", attr),
+                    AttributeOperator::Equals => write!(f, "[{}=\"{}\"", attr, value),
+                    AttributeOperator::Includes => write!(f, "[{}~=\"{}\"", attr, value),
+                    AttributeOperator::DashMatch => write!(f, "[{}|=\"{}\"", attr, value),
+                    AttributeOperator::StartsWith => write!(f, "[{}^=\"{}\"", attr, value),
+                    AttributeOperator::EndsWith => write!(f, "[{}$=\"{}\"", attr, value),
+                    AttributeOperator::Contains => write!(f, "[{}*=\"{}\"", attr, value),
+                }?;
+
+                if let Some(sensitivity) = case_sensitivity {
+                    match sensitivity {
+                        CaseSensitivity::Sensitive => write!(f, " s"),
+                        CaseSensitivity::Insensitive => write!(f, " i"),
+                    }?;
+                }
+                
+                write!(f, "]")?;
+                
+                Ok(())
+            }
         }
     }
 }

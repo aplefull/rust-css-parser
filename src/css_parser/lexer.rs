@@ -26,6 +26,12 @@ pub enum TokenType {
     Tilde,           // ~ (general sibling)
     // Plus is already defined above (adjacent sibling)
 
+    // Comparison operators
+    Equals,          // =
+    Caret,           // ^
+    Dollar,          // $
+    Pipe,            // |
+
     // At-rules
     AtSymbol,        // @
 
@@ -62,6 +68,10 @@ impl fmt::Display for TokenType {
             TokenType::Slash => write!(f, "/"),
             TokenType::GreaterThan => write!(f, ">"),
             TokenType::Tilde => write!(f, "~"),
+            TokenType::Equals => write!(f, "="),
+            TokenType::Caret => write!(f, "^"),
+            TokenType::Dollar => write!(f, "$"),
+            TokenType::Pipe => write!(f, "|"),
             TokenType::AtSymbol => write!(f, "@"),
             TokenType::Identifier(val) => write!(f, "Identifier({})", val),
             TokenType::Number(val) => write!(f, "Number({})", val),
@@ -214,6 +224,26 @@ impl Lexer {
                 self.read_char();
                 token
             },
+            '=' => {
+                let token = Token::new(TokenType::Equals, self.line, self.column, 1);
+                self.read_char();
+                token
+            },
+            '^' => {
+                let token = Token::new(TokenType::Caret, self.line, self.column, 1);
+                self.read_char();
+                token
+            },
+            '$' => {
+                let token = Token::new(TokenType::Dollar, self.line, self.column, 1);
+                self.read_char();
+                token
+            },
+            '|' => {
+                let token = Token::new(TokenType::Pipe, self.line, self.column, 1);
+                self.read_char();
+                token
+            },
             '@' => {
                 let token = Token::new(TokenType::AtSymbol, self.line, self.column, 1);
                 self.read_char();
@@ -270,7 +300,7 @@ impl Lexer {
 
                 if self.ch.is_some() && self.is_hex_digit(self.ch.unwrap()) {
                     let hex_color = self.read_hex_color();
-                    Token::new(TokenType::HexColor(hex_color.clone()), self.line, start_col, hex_color.len() + 1) // +1 for #
+                    Token::new(TokenType::HexColor(hex_color.clone()), self.line, start_col, hex_color.len() + 1)
                 } else {
                     Token::new(TokenType::Hash, self.line, start_col, 1)
                 }

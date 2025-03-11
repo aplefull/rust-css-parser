@@ -283,7 +283,7 @@ impl CssParser {
             match &token.token_type {
                 TokenType::OpenBrace | TokenType::GreaterThan | TokenType::Plus | TokenType::Tilde => break,
                 TokenType::Identifier(_) | TokenType::Dot | TokenType::Hash |
-                TokenType::Colon | TokenType::Asterisk => {
+                TokenType::Colon | TokenType::Asterisk | TokenType::OpenBracket => {
                     let part = self.parse_selector_part(first_part)?;
                     parts.push(part);
                     first_part = false;
@@ -349,6 +349,9 @@ impl CssParser {
                     let name = name.clone();
                     self.next_token();
                     Ok(SelectorPart::Element(name))
+                },
+                TokenType::OpenBracket => {
+                    self.parse_attribute_selector()
                 },
                 _ => Err(format!("Unexpected token in selector: {:?}", token.token_type)),
             }
@@ -443,6 +446,142 @@ impl CssParser {
             }
         } else {
             Err("Unexpected end of input while parsing value".to_string())
+        }
+    }
+
+    fn parse_attribute_selector(&mut self) -> Result<SelectorPart, String> {
+        self.next_token();
+
+        let attr_name = match self.next_token() {
+            Some(token) => {
+                if let TokenType::Identifier(name) = token.token_type {
+                    name
+                } else {
+                    return Err(format!("Expected attribute name, found {:?}", token.token_type));
+                }
+            },
+            None => return Err("Unexpected end of input while parsing attribute selector".to_string()),
+        };
+
+        if let Some(token) = self.peek_token() {
+            match &token.token_type {
+                TokenType::CloseBracket => {
+                    self.next_token();
+                    return Ok(SelectorPart::AttributeSelector(attr_name, None));
+                },
+                _ => {
+                    let operator = self.parse_attribute_operator()?;
+                    let value = self.parse_attribute_value()?;
+
+                    let mut case_sensitivity = None;
+
+                    if let Some(token) = self.peek_token() {
+                        if let TokenType::Identifier(modifier) = &token.token_type {
+                            if modifier == "i" {
+                                case_sensitivity = Some(CaseSensitivity::Insensitive);
+                                self.next_token();
+                            } else if modifier == "s" {
+                                case_sensitivity = Some(CaseSensitivity::Sensitive);
+                                self.next_token();
+                            }
+                        }
+                    }
+
+                    if let Some(token) = self.next_token() {
+                        if !matches!(token.token_type, TokenType::CloseBracket) {
+                            return Err(format!("Expected closing bracket, found {:?}", token.token_type));
+                        }
+                    } else {
+                        return Err("Unexpected end of input while parsing attribute selector".to_string());
+                    }
+
+                    return Ok(SelectorPart::AttributeSelector(attr_name, Some((operator, value, case_sensitivity))));
+                }
+            }
+        }
+
+        Err("Unexpected end of input while parsing attribute selector".to_string())
+    }
+    
+    fn parse_attribute_operator(&mut self) -> Result<AttributeOperator, String> {
+        match self.next_token() {
+            Some(token) => {
+                match &token.token_type {
+                    TokenType::Equals => {
+                        Ok(AttributeOperator::Equals)
+                    },
+                    TokenType::Tilde => {
+                        if let Some(next) = self.next_token() {
+                            if matches!(next.token_type, TokenType::Equals) {
+                                Ok(AttributeOperator::Includes)
+                            } else {
+                                Err(format!("Expected = after ~, found {:?}", next.token_type))
+                            }
+                        } else {
+                            Err("Unexpected end of input after ~".to_string())
+                        }
+                    },
+                    TokenType::Pipe => {
+                        if let Some(next) = self.next_token() {
+                            if matches!(next.token_type, TokenType::Equals) {
+                                Ok(AttributeOperator::DashMatch)
+                            } else {
+                                Err(format!("Expected = after |, found {:?}", next.token_type))
+                            }
+                        } else {
+                            Err("Unexpected end of input after |".to_string())
+                        }
+                    },
+                    TokenType::Caret => {
+                        if let Some(next) = self.next_token() {
+                            if matches!(next.token_type, TokenType::Equals) {
+                                Ok(AttributeOperator::StartsWith)
+                            } else {
+                                Err(format!("Expected = after ^, found {:?}", next.token_type))
+                            }
+                        } else {
+                            Err("Unexpected end of input after ^".to_string())
+                        }
+                    },
+                    TokenType::Dollar => {
+                        if let Some(next) = self.next_token() {
+                            if matches!(next.token_type, TokenType::Equals) {
+                                Ok(AttributeOperator::EndsWith)
+                            } else {
+                                Err(format!("Expected = after $, found {:?}", next.token_type))
+                            }
+                        } else {
+                            Err("Unexpected end of input after $".to_string())
+                        }
+                    },
+                    TokenType::Asterisk => {
+                        if let Some(next) = self.next_token() {
+                            if matches!(next.token_type, TokenType::Equals) {
+                                Ok(AttributeOperator::Contains)
+                            } else {
+                                Err(format!("Expected = after *, found {:?}", next.token_type))
+                            }
+                        } else {
+                            Err("Unexpected end of input after *".to_string())
+                        }
+                    },
+                    _ => Err(format!("Expected attribute operator, found {:?}", token.token_type)),
+                }
+            },
+            None => Err("Unexpected end of input while parsing attribute operator".to_string()),
+        }
+    }
+    
+    fn parse_attribute_value(&mut self) -> Result<String, String> {
+        match self.next_token() {
+            Some(token) => {
+                match &token.token_type {
+                    TokenType::String(value) => Ok(value.clone()),
+                    TokenType::Identifier(value) => Ok(value.clone()),
+                    _ => Err(format!("Expected attribute value, found {:?}", token.token_type)),
+                }
+            },
+            None => Err("Unexpected end of input while parsing attribute value".to_string()),
         }
     }
 
@@ -1052,35 +1191,104 @@ impl CssParser {
         })
     }
 
+    // TODO handle cases like font-family: Fira Code, Fira Mono, Menlo, Consolas, DejaVu Sans Mono, monospace; correctly
     fn parse_value_possibly_list(&mut self) -> Result<Value, String> {
         let first_value = self.parse_value()?;
 
         let mut values = vec![first_value];
         let mut separator = None;
+        let mut current_unquoted_string = String::new();
+        let mut building_unquoted_font = false;
 
         loop {
             if let Some(token) = self.peek_token() {
                 match &token.token_type {
                     TokenType::Semicolon | TokenType::CloseBrace => {
+                        if building_unquoted_font && !current_unquoted_string.is_empty() {
+                            if let Some(last) = values.last_mut() {
+                                if let Value::Literal(name) = last {
+                                    *name = current_unquoted_string.trim().to_string();
+                                }
+                            }
+                        }
                         break;
                     },
                     TokenType::Comma => {
-                        if separator.is_some() && separator != Some(ListSeparator::Comma) {
-                            return Err("Mixed separators in list not allowed".to_string());
-                        }
-                        separator = Some(ListSeparator::Comma);
-                        self.next_token();
-                        let next_value = self.parse_value()?;
-                        values.push(next_value);
-                    },
-                    _ => {
-                        if separator.is_some() && separator != Some(ListSeparator::Space) {
-                            return Err("Mixed separators in list not allowed".to_string());
+                        if building_unquoted_font && !current_unquoted_string.is_empty() {
+                            if let Some(last) = values.last_mut() {
+                                if let Value::Literal(name) = last {
+                                    *name = current_unquoted_string.trim().to_string();
+                                }
+                            }
+                            building_unquoted_font = false;
+                            current_unquoted_string.clear();
                         }
 
+                        if separator.is_some() && separator != Some(ListSeparator::Comma) {
+                            let is_font_like_list = values.iter().all(|v| {
+                                matches!(v, Value::Literal(_) | Value::QuotedString(_) | Value::Keyword(_))
+                            });
+
+                            if !is_font_like_list {
+                                return Err("Mixed separators in list not allowed".to_string());
+                            }
+                        }
+
+                        separator = Some(ListSeparator::Comma);
+                        self.next_token();
+
+                        let next_value = self.parse_value()?;
+                        values.push(next_value);
+
+                        if let Value::Literal(_) = values.last().unwrap() {
+                            building_unquoted_font = true;
+                            if let Value::Literal(name) = values.last().unwrap() {
+                                current_unquoted_string = name.clone();
+                            }
+                        }
+                    },
+                    TokenType::Identifier(ident) => {
+                        if building_unquoted_font {
+                            current_unquoted_string.push(' ');
+                            current_unquoted_string.push_str(ident);
+                            self.next_token();
+                        } else {
+                            if separator.is_some() && separator != Some(ListSeparator::Space) {
+                                let is_font_like_list = values.iter().all(|v| {
+                                    matches!(v, Value::Literal(_) | Value::QuotedString(_) | Value::Keyword(_))
+                                });
+
+                                if !is_font_like_list {
+                                    return Err("Mixed separators in list not allowed".to_string());
+                                }
+                            }
+
+                            separator = Some(ListSeparator::Space);
+                            let result = self.parse_value();
+                            match result {
+                                Ok(next_value) => {
+                                    values.push(next_value);
+                                },
+                                Err(_) => {
+                                    break;
+                                }
+                            }
+                        }
+                    },
+                    _ => {
                         let result = self.parse_value();
                         match result {
                             Ok(next_value) => {
+                                if separator.is_some() && separator != Some(ListSeparator::Space) {
+                                    let is_font_like_list = values.iter().all(|v| {
+                                        matches!(v, Value::Literal(_) | Value::QuotedString(_) | Value::Keyword(_))
+                                    });
+
+                                    if !is_font_like_list {
+                                        return Err("Mixed separators in list not allowed".to_string());
+                                    }
+                                }
+
                                 separator = Some(ListSeparator::Space);
                                 values.push(next_value);
                             },
@@ -1095,13 +1303,21 @@ impl CssParser {
             }
         }
 
+        if building_unquoted_font && !current_unquoted_string.is_empty() {
+            if let Some(last) = values.last_mut() {
+                if let Value::Literal(name) = last {
+                    *name = current_unquoted_string.trim().to_string();
+                }
+            }
+        }
+
         if values.len() == 1 {
             Ok(values.remove(0))
         } else {
             Ok(Value::List(values, separator.unwrap_or(ListSeparator::Space)))
         }
     }
-
+    
     fn expect_open_paren(&mut self) -> Result<(), String> {
         if let Some(token) = self.next_token() {
             match token.token_type {
