@@ -345,11 +345,11 @@ mod tests {
 
         let decl = get_first_declaration(&stylesheet).unwrap();
         assert_eq!(decl.property, "src");
-        
+
         match &decl.value {
             Value::List(items, ListSeparator::Space) => {
                 assert_eq!(items.len(), 2);
-                
+
                 match &items[0] {
                     Value::Function(_, url) => {
                         match &url[0] {
@@ -367,11 +367,11 @@ mod tests {
 
         let css = ".misc { display: grid !important; }";
         let stylesheet = parse(css).unwrap();
-        
+
         let decl = get_first_declaration(&stylesheet).unwrap();
         assert_eq!(decl.property, "display");
         assert!(decl.is_important);
-        
+
         // TODO .size2{font-size:calc(.28929605em + .2 / .00)}
         // TODO .size2{font-size: rgba(0 0 0 / 0.5%);}
         // TODO --tw-ring-inset: var(--tw-empty, /*!*/ /*!*/);

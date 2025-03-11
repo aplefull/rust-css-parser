@@ -511,11 +511,6 @@ impl CssParser {
                     Ok(Value::QuotedString(text_clone))
                 },
                 TokenType::Hash => self.parse_hex_color(),
-                TokenType::HexColor(hex) => {
-                    let hex_clone = hex.clone();
-                    self.next_token();
-                    Ok(Value::Color(Color::Hex(format!("#{}", hex_clone))))
-                },
                 _ => {
                     let token = self.next_token().unwrap();
                     Ok(Value::Literal(format!("{}", token.token_type)))
@@ -703,17 +698,15 @@ impl CssParser {
         self.next_token();
 
         if let Some(token) = self.next_token() {
-            if let TokenType::HexColor(hex) = token.token_type {
-                println!("Parsed hex color: {}", hex);
-                Ok(Value::Color(Color::Hex(format!("#{}", hex))))
-            } else if let TokenType::Identifier(name) = token.token_type {
-                if name.chars().all(|c| c.is_digit(16)) {
-                    Ok(Value::Color(Color::Hex(format!("#{}", name))))
-                } else {
-                    Ok(Value::Literal(format!("#{}", name)))
-                }
-            } else {
-                Err(format!("Expected hex color after #, found {:?}", token.token_type))
+            match &token.token_type {
+                TokenType::Identifier(name) => {
+                    if name.chars().all(|c| c.is_digit(16)) {
+                        Ok(Value::Color(Color::Hex(format!("#{}", name))))
+                    } else {
+                        Ok(Value::Literal(format!("#{}", name)))
+                    }
+                },
+                _ => Err(format!("Expected identifier after #, found {:?}", token.token_type)),
             }
         } else {
             Err("Unexpected end of input after #".to_string())
@@ -781,59 +774,55 @@ impl CssParser {
     }
 
     fn parse_url_argument(&mut self) -> Result<String, String> {
-        let mut url = String::new();
-        let mut paren_depth = 0;
-
         if let Some(token) = self.peek_token().cloned() {
+            if let TokenType::String(text) = &token.token_type {
+                self.next_token();
+                return Ok(text.clone());
+            }
+        }
+
+        let mut url = String::new();
+
+        while let Some(token) = self.peek_token() {
+            if matches!(token.token_type, TokenType::CloseParen) {
+                break;
+            }
+
+            let token = self.next_token().unwrap();
             match &token.token_type {
-                TokenType::String(text) => {
-                    self.next_token();
-                    return Ok(text.clone());
-                },
+                TokenType::Identifier(text) => url.push_str(text),
+                TokenType::Number(num) => url.push_str(&num.to_string()),
+                TokenType::String(text) => url.push_str(text),
+                TokenType::Colon => url.push(':'),
+                TokenType::Slash => url.push('/'),
+                TokenType::Semicolon => url.push(';'),
+                TokenType::Comma => url.push(','),
+                TokenType::Plus => url.push('+'),
+                TokenType::Minus => url.push('-'),
+                TokenType::Dot => url.push('.'),
+                TokenType::Equals => url.push('='),
+                TokenType::Hash => url.push('#'),
+                TokenType::Asterisk => url.push('*'),
+                TokenType::Backslash => url.push('\\'),
+                TokenType::Tilde => url.push('~'),
+                TokenType::Dollar => url.push('$'),
+                TokenType::Caret => url.push('^'),
+                TokenType::Pipe => url.push('|'),
+                TokenType::ExclamationMark => url.push('!'),
+                TokenType::AtSymbol => url.push('@'),
+                TokenType::GreaterThan => url.push('>'),
+                TokenType::OpenBracket => url.push('['),
+                TokenType::CloseBracket => url.push(']'),
+                TokenType::Unit(unit) => url.push_str(unit),
                 _ => {
-                    while let Some(token) = self.peek_token() {
-                        match &token.token_type {
-                            TokenType::OpenParen => {
-                                paren_depth += 1;
-                                url.push('(');
-                                self.next_token();
-                            },
-                            TokenType::CloseParen => {
-                                if paren_depth == 0 {
-                                    break;
-                                }
-                                paren_depth -= 1;
-                                url.push(')');
-                                self.next_token();
-                            },
-                            TokenType::Semicolon | TokenType::OpenBrace | TokenType::CloseBrace => {
-                                break;
-                            },
-                            _ => {
-                                let token = self.next_token().unwrap();
-                                match &token.token_type {
-                                    TokenType::Identifier(text) => url.push_str(text),
-                                    TokenType::Number(num) => url.push_str(&num.to_string()),
-                                    TokenType::Dot => url.push('.'),
-                                    TokenType::Slash => url.push('/'),
-                                    TokenType::Minus => url.push('-'),
-                                    TokenType::Colon => url.push(':'),
-                                    TokenType::Hash => url.push('#'),
-                                    TokenType::Plus => url.push('+'),
-                                    _ => {
-                                        url.push_str(&format!("{}", token.token_type))
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    url.push_str(&format!("{}", token.token_type));
                 }
             }
         }
 
-        Ok(url.trim().to_string())
+        Ok(url)
     }
-
+    
     fn parse_calc_function(&mut self) -> Result<Value, String> {
         let expression = self.parse_calc_expression()?;
 
@@ -1545,7 +1534,7 @@ impl CssParser {
             Ok(Value::List(values, separator.unwrap_or(ListSeparator::Space)))
         }
     }
-    
+
     fn expect_open_paren(&mut self) -> Result<(), String> {
         if let Some(token) = self.next_token() {
             match token.token_type {

@@ -12,21 +12,21 @@ fn main() {
             let mut parser = CssParser::new(css.clone());
             let mut lexer = Lexer::new(css);
 
-            loop {
+            /*loop {
                 let token = lexer.next_token();
                 println!("{:?}", token);
 
                 if token.token_type == TokenType::EOF {
                     break;
                 }
-            }
+            }*/
 
             match parser.parse_stylesheet() {
                 Ok(stylesheet) => {
                     println!("Parsed CSS:");
                     println!("Regular rules: {}", stylesheet.rules.len());
                     for rule in &stylesheet.rules {
-                        println!("{}", rule);
+                        println!("{:?}", rule);
                     }
 
                     println!("At-rules: {}", stylesheet.at_rules.len());

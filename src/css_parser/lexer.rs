@@ -45,7 +45,6 @@ pub enum TokenType {
 
     // Special CSS values
     Unit(String),            // px, em, %, etc.
-    HexColor(String),        // #fff, #123456
 
     // End of file
     EOF,
@@ -83,7 +82,6 @@ impl fmt::Display for TokenType {
             TokenType::Number(val) => write!(f, "Number({})", val),
             TokenType::String(val) => write!(f, "String(\"{}\")", val),
             TokenType::Unit(val) => write!(f, "Unit({})", val),
-            TokenType::HexColor(val) => write!(f, "HexColor(#{})", val),
             TokenType::EOF => write!(f, "EOF"),
         }
     }
@@ -349,15 +347,29 @@ impl Lexer {
                 token
             },
             '#' => {
-                let start_col = self.column;
+                let hash_token = Token::new(TokenType::Hash, self.line, self.column, 1);
                 self.read_char();
 
                 if self.ch.is_some() && self.is_hex_digit(self.ch.unwrap()) {
-                    let hex_color = self.read_hex_color();
-                    Token::new(TokenType::HexColor(hex_color.clone()), self.line, start_col, hex_color.len() + 1)
-                } else {
-                    Token::new(TokenType::Hash, self.line, start_col, 1)
+                    let hex_start_col = self.column;
+                    let hex_start_position = self.position;
+
+                    while self.ch.is_some() && self.is_hex_digit(self.ch.unwrap()) {
+                        self.read_char();
+                    }
+
+                    let hex_value = self.input[hex_start_position..self.position].to_string();
+                    let hex_length = hex_value.len();
+
+                    self.next_token_cache = Some(Token::new(
+                        TokenType::Identifier(hex_value),
+                        self.line,
+                        hex_start_col,
+                        hex_length
+                    ));
                 }
+
+                hash_token
             },
             '"' | '\'' => {
                 let quote_char = ch;
