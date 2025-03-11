@@ -713,6 +713,12 @@ impl CssParser {
     fn parse_function(&mut self, name: String) -> Result<Value, String> {
         self.expect_open_paren()?;
 
+        if name.to_lowercase() == "url" {
+            let url_value = self.parse_url_argument()?;
+            self.expect_close_paren()?;
+            return Ok(Value::Function(name, vec![Value::Literal(url_value)]));
+        }
+        
         if name.to_lowercase() == "calc" {
             return self.parse_calc_function();
         }
@@ -762,6 +768,60 @@ impl CssParser {
         }
 
         Ok(Value::Function(name, arguments))
+    }
+
+    fn parse_url_argument(&mut self) -> Result<String, String> {
+        let mut url = String::new();
+        let mut paren_depth = 0;
+
+        if let Some(token) = self.peek_token().cloned() {
+            match &token.token_type {
+                TokenType::String(text) => {
+                    self.next_token();
+                    return Ok(text.clone());
+                },
+                _ => {
+                    while let Some(token) = self.peek_token() {
+                        match &token.token_type {
+                            TokenType::OpenParen => {
+                                paren_depth += 1;
+                                url.push('(');
+                                self.next_token();
+                            },
+                            TokenType::CloseParen => {
+                                if paren_depth == 0 {
+                                    break;
+                                }
+                                paren_depth -= 1;
+                                url.push(')');
+                                self.next_token();
+                            },
+                            TokenType::Semicolon | TokenType::OpenBrace | TokenType::CloseBrace => {
+                                break;
+                            },
+                            _ => {
+                                let token = self.next_token().unwrap();
+                                match &token.token_type {
+                                    TokenType::Identifier(text) => url.push_str(text),
+                                    TokenType::Number(num) => url.push_str(&num.to_string()),
+                                    TokenType::Dot => url.push('.'),
+                                    TokenType::Slash => url.push('/'),
+                                    TokenType::Minus => url.push('-'),
+                                    TokenType::Colon => url.push(':'),
+                                    TokenType::Hash => url.push('#'),
+                                    TokenType::Plus => url.push('+'),
+                                    _ => {
+                                        url.push_str(&format!("{}", token.token_type))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(url.trim().to_string())
     }
 
     fn parse_calc_function(&mut self) -> Result<Value, String> {

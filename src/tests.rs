@@ -275,7 +275,7 @@ mod tests {
         assert_eq!(decl.property, "content");
         assert!(matches!(decl.value, Value::QuotedString(ref content) if content == "This content { has } some { reserved characters }"));
     }
-    
+
     #[test]
     fn test_calc() {
         let css = r#"
@@ -327,9 +327,42 @@ mod tests {
 
         let grid = &rule.declarations[3];
         assert_eq!(grid.property, "grid-template-columns");
-        
+
         assert!(matches!(grid.value, Value::List(ref items, ListSeparator::Space) if items.len() == 3));
-        
+
         // TODO
+    }
+
+    #[test]
+    fn test_misc() {
+        let css = r#"
+        .misc {
+            src: url(/_next/static/media/KaTeX_AMS-Regular.a79f1c31.woff2) format("woff2");
+        }
+        "#;
+
+        let stylesheet = parse(css).unwrap();
+
+        let decl = get_first_declaration(&stylesheet).unwrap();
+        assert_eq!(decl.property, "src");
+        
+        match &decl.value {
+            Value::List(items, ListSeparator::Space) => {
+                assert_eq!(items.len(), 2);
+                
+                match &items[0] {
+                    Value::Function(_, url) => {
+                        match &url[0] {
+                            Value::Literal(url) => {
+                                assert_eq!(url, "/_next/static/media/KaTeX_AMS-Regular.a79f1c31.woff2");
+                            }
+                            _ => panic!("Unexpected value type"),
+                        }
+                    }
+                    _ => panic!("Unexpected value type"),
+                }
+            }
+            _ => panic!("Unexpected value type"),
+        }
     }
 }
