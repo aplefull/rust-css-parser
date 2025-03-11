@@ -16,6 +16,7 @@ pub enum TokenType {
     Hash,            // #
     Dot,             // .
     Asterisk,        // *
+    ExclamationMark, // !
 
     // Math operators
     Plus,            // +
@@ -65,6 +66,7 @@ impl fmt::Display for TokenType {
             TokenType::Hash => write!(f, "#"),
             TokenType::Dot => write!(f, "."),
             TokenType::Asterisk => write!(f, "*"),
+            TokenType::ExclamationMark => write!(f, "!"),
             TokenType::Plus => write!(f, "+"),
             TokenType::Minus => write!(f, "-"),
             TokenType::Slash => write!(f, "/"),
@@ -265,6 +267,11 @@ impl Lexer {
             },
             '*' => {
                 let token = Token::new(TokenType::Asterisk, self.line, self.column, 1);
+                self.read_char();
+                token
+            },
+            '!' => {
+                let token = Token::new(TokenType::ExclamationMark, self.line, self.column, 1);
                 self.read_char();
                 token
             },

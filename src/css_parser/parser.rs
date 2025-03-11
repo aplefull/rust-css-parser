@@ -718,7 +718,7 @@ impl CssParser {
             self.expect_close_paren()?;
             return Ok(Value::Function(name, vec![Value::Literal(url_value)]));
         }
-        
+
         if name.to_lowercase() == "calc" {
             return self.parse_calc_function();
         }
@@ -1311,10 +1311,32 @@ impl CssParser {
 
         let value = self.parse_value_possibly_list()?;
 
+        let mut is_important = false;
+        if let Some(token) = self.peek_token() {
+            if matches!(token.token_type, TokenType::ExclamationMark) {
+                self.next_token();
+
+                if let Some(token) = self.next_token() {
+                    if let TokenType::Identifier(name) = token.token_type {
+                        if name.to_lowercase() == "important" {
+                            is_important = true;
+                        } else {
+                            return Err(format!("Expected 'important' after '!', found {}", name));
+                        }
+                    } else {
+                        return Err(format!("Expected 'important' after '!', found {:?}", token.token_type));
+                    }
+                } else {
+                    return Err("Unexpected end of input after '!'".to_string());
+                }
+            }
+        }
+
         Ok(Declaration {
             property,
             value,
             is_custom_property,
+            is_important,
         })
     }
 
@@ -1330,7 +1352,7 @@ impl CssParser {
         loop {
             if let Some(token) = self.peek_token() {
                 match &token.token_type {
-                    TokenType::Semicolon | TokenType::CloseBrace => {
+                    TokenType::Semicolon | TokenType::CloseBrace | TokenType::ExclamationMark => {
                         if building_unquoted_font && !current_unquoted_string.is_empty() {
                             if let Some(last) = values.last_mut() {
                                 if let Value::Literal(name) = last {

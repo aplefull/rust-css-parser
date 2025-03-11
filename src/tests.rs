@@ -364,5 +364,12 @@ mod tests {
             }
             _ => panic!("Unexpected value type"),
         }
+
+        let css = ".misc { display: grid !important; }";
+        let stylesheet = parse(css).unwrap();
+        
+        let decl = get_first_declaration(&stylesheet).unwrap();
+        assert_eq!(decl.property, "display");
+        assert!(decl.is_important);
     }
 }

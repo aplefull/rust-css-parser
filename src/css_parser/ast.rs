@@ -351,11 +351,16 @@ pub struct Declaration {
     pub property: String,
     pub value: Value,
     pub is_custom_property: bool,
+    pub is_important: bool,
 }
 
 impl fmt::Display for Declaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {};", self.property, self.value)
+        if self.is_important {
+            write!(f, "{}: {} !important;", self.property, self.value)
+        } else {
+            write!(f, "{}: {};", self.property, self.value)
+        }
     }
 }
 
