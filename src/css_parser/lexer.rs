@@ -11,6 +11,7 @@ pub enum TokenType {
     CloseBracket,    // ]
     Semicolon,       // ;
     Colon,           // :
+    DoubleColon,     // ::
     Comma,           // ,
     Hash,            // #
     Dot,             // .
@@ -59,6 +60,7 @@ impl fmt::Display for TokenType {
             TokenType::CloseBracket => write!(f, "]"),
             TokenType::Semicolon => write!(f, ";"),
             TokenType::Colon => write!(f, ":"),
+            TokenType::DoubleColon => write!(f, "::"),
             TokenType::Comma => write!(f, ","),
             TokenType::Hash => write!(f, "#"),
             TokenType::Dot => write!(f, "."),
@@ -205,9 +207,16 @@ impl Lexer {
                 token
             },
             ':' => {
-                let token = Token::new(TokenType::Colon, self.line, self.column, 1);
-                self.read_char();
-                token
+                if self.peek_char() == Some(':') {
+                    let token = Token::new(TokenType::DoubleColon, self.line, self.column, 2);
+                    self.read_char();
+                    self.read_char();
+                    token
+                } else {
+                    let token = Token::new(TokenType::Colon, self.line, self.column, 1);
+                    self.read_char();
+                    token
+                }
             },
             ',' => {
                 let token = Token::new(TokenType::Comma, self.line, self.column, 1);

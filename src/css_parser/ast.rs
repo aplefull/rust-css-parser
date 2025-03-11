@@ -13,8 +13,8 @@ pub enum AttributeOperator {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CaseSensitivity {
-    Sensitive,      // Default or explicit 's'
-    Insensitive,    // 'i'
+    Sensitive,
+    Insensitive,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -23,6 +23,8 @@ pub enum SelectorPart {
     Id(String),
     Element(String),
     Universal,
+    PseudoClass(String),
+    PseudoClassFunction(String, String),
     PseudoElement(String),
     AttributeSelector(String, Option<(AttributeOperator, String, Option<CaseSensitivity>)>),
 }
@@ -34,7 +36,9 @@ impl fmt::Display for SelectorPart {
             SelectorPart::Id(name) => write!(f, "#{}", name),
             SelectorPart::Element(name) => write!(f, "{}", name),
             SelectorPart::Universal => write!(f, "*"),
-            SelectorPart::PseudoElement(name) => write!(f, ":{}", name),
+            SelectorPart::PseudoClass(name) => write!(f, ":{}", name),
+            SelectorPart::PseudoClassFunction(name, args) => write!(f, ":{}({})", name, args),
+            SelectorPart::PseudoElement(name) => write!(f, "::{}", name),
             SelectorPart::AttributeSelector(attr, None) => write!(f, "[{}]", attr),
             SelectorPart::AttributeSelector(attr, Some((op, value, case_sensitivity))) => {
                 match op {
@@ -53,9 +57,9 @@ impl fmt::Display for SelectorPart {
                         CaseSensitivity::Insensitive => write!(f, " i"),
                     }?;
                 }
-                
+
                 write!(f, "]")?;
-                
+
                 Ok(())
             }
         }

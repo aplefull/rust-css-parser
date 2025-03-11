@@ -167,7 +167,7 @@ impl CssParser {
             declarations,
         })
     }
-    
+
     fn parse_at_rule(&mut self) -> Result<AtRule, String> {
         self.next_token();
 
@@ -262,7 +262,7 @@ impl CssParser {
                     groups.push(next_group);
                 },
                 TokenType::Identifier(_) | TokenType::Dot | TokenType::Hash |
-                TokenType::Colon | TokenType::Asterisk => {
+                TokenType::Colon | TokenType::DoubleColon | TokenType::Asterisk => {
                     combinators.push(SelectorCombinator::Descendant);
                     let next_group = self.parse_selector_group()?;
                     groups.push(next_group);
@@ -277,16 +277,14 @@ impl CssParser {
 
     fn parse_selector_group(&mut self) -> Result<SelectorGroup, String> {
         let mut parts = Vec::new();
-        let mut first_part = true;
 
         while let Some(token) = self.peek_token() {
             match &token.token_type {
                 TokenType::OpenBrace | TokenType::GreaterThan | TokenType::Plus | TokenType::Tilde => break,
                 TokenType::Identifier(_) | TokenType::Dot | TokenType::Hash |
-                TokenType::Colon | TokenType::Asterisk | TokenType::OpenBracket => {
-                    let part = self.parse_selector_part(first_part)?;
+                TokenType::Colon | TokenType::DoubleColon | TokenType::Asterisk | TokenType::OpenBracket => {
+                    let part = self.parse_selector_part(true)?;
                     parts.push(part);
-                    first_part = false;
                 },
                 _ => break,
             }
@@ -333,12 +331,33 @@ impl CssParser {
                     match self.next_token() {
                         Some(token) => {
                             if let TokenType::Identifier(name) = token.token_type {
-                                Ok(SelectorPart::PseudoElement(name))
+                                if let Some(peek_token) = self.peek_token() {
+                                    if matches!(peek_token.token_type, TokenType::OpenParen) {
+                                        self.next_token();
+                                        let args = self.parse_pseudo_class_arguments()?;
+                                        return Ok(SelectorPart::PseudoClassFunction(name, args));
+                                    }
+                                }
+                                Ok(SelectorPart::PseudoClass(name))
                             } else {
                                 Err(format!("Expected identifier after colon, found {:?}", token.token_type))
                             }
                         },
                         None => Err("Unexpected end of input after colon".to_string()),
+                    }
+                },
+
+                TokenType::DoubleColon => {
+                    self.next_token();
+                    match self.next_token() {
+                        Some(token) => {
+                            if let TokenType::Identifier(name) = token.token_type {
+                                Ok(SelectorPart::PseudoElement(name))
+                            } else {
+                                Err(format!("Expected identifier after double colon, found {:?}", token.token_type))
+                            }
+                        },
+                        None => Err("Unexpected end of input after double colon".to_string()),
                     }
                 },
                 TokenType::Asterisk => {
@@ -359,6 +378,54 @@ impl CssParser {
             Err("Unexpected end of input while parsing selector part".to_string())
         }
     }
+
+    fn parse_pseudo_class_arguments(&mut self) -> Result<String, String> {
+        let mut args = String::new();
+        let mut paren_depth = 1;
+
+        while paren_depth > 0 {
+            if let Some(token) = self.peek_token() {
+                match &token.token_type {
+                    TokenType::OpenParen => {
+                        paren_depth += 1;
+                        args.push('(');
+                        self.next_token();
+                    },
+                    TokenType::CloseParen => {
+                        paren_depth -= 1;
+                        if paren_depth > 0 {
+                            args.push(')');
+                        }
+                        self.next_token();
+                        if paren_depth == 0 {
+                            break;
+                        }
+                    },
+                    _ => {
+                        let token = self.next_token().unwrap();
+                        match &token.token_type {
+                            TokenType::Identifier(name) => args.push_str(name),
+                            TokenType::Number(num) => args.push_str(&num.to_string()),
+                            TokenType::String(text) => args.push_str(&format!("\"{}\"", text)),
+                            TokenType::Colon => args.push(':'),
+                            TokenType::Dot => args.push('.'),
+                            TokenType::Hash => args.push('#'),
+                            TokenType::Plus => args.push('+'),
+                            TokenType::Minus => args.push('-'),
+                            TokenType::Asterisk => args.push('*'),
+                            TokenType::Comma => args.push_str(", "),
+                            _ => args.push_str(&format!("{}", token.token_type)),
+                        }
+                    }
+                }
+            } else {
+                return Err("Unexpected end of input while parsing pseudo-class arguments".to_string());
+            }
+        }
+
+        Ok(args.trim().to_string())
+    }
+
 
     fn parse_declarations(&mut self) -> Result<Vec<Declaration>, String> {
         let mut declarations = Vec::new();
@@ -502,7 +569,7 @@ impl CssParser {
 
         Err("Unexpected end of input while parsing attribute selector".to_string())
     }
-    
+
     fn parse_attribute_operator(&mut self) -> Result<AttributeOperator, String> {
         match self.next_token() {
             Some(token) => {
@@ -571,7 +638,7 @@ impl CssParser {
             None => Err("Unexpected end of input while parsing attribute operator".to_string()),
         }
     }
-    
+
     fn parse_attribute_value(&mut self) -> Result<String, String> {
         match self.next_token() {
             Some(token) => {
@@ -681,7 +748,7 @@ impl CssParser {
             if let Some(token) = self.peek_token() {
                 match &token.token_type {
                     TokenType::Comma => {
-                        self.next_token(); 
+                        self.next_token();
                     },
                     TokenType::CloseParen => {
                         self.next_token();
@@ -1317,7 +1384,7 @@ impl CssParser {
             Ok(Value::List(values, separator.unwrap_or(ListSeparator::Space)))
         }
     }
-    
+
     fn expect_open_paren(&mut self) -> Result<(), String> {
         if let Some(token) = self.next_token() {
             match token.token_type {

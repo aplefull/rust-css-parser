@@ -95,7 +95,7 @@ mod tests {
         let rule = &stylesheet.rules[0];
         assert_eq!(rule.selectors.first().unwrap().groups[0].parts.len(), 2);
         assert_eq!(rule.selectors.first().unwrap().groups[0].parts[0], SelectorPart::Element("div".to_string()));
-        assert_eq!(rule.selectors.first().unwrap().groups[0].parts[1], SelectorPart::PseudoElement("before".to_string()));
+        assert_eq!(rule.selectors.first().unwrap().groups[0].parts[1], SelectorPart::PseudoClass("before".to_string()));
     }
 
     #[test]
