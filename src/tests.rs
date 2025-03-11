@@ -371,5 +371,8 @@ mod tests {
         let decl = get_first_declaration(&stylesheet).unwrap();
         assert_eq!(decl.property, "display");
         assert!(decl.is_important);
+        
+        // TODO .size2{font-size:calc(.28929605em + .2 / .00)}
+        // TODO .size2{font-size: rgba(0 0 0 / 0.5%);}
     }
 }

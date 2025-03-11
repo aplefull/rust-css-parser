@@ -261,6 +261,37 @@ impl Lexer {
                 token
             },
             '.' => {
+                if let Some(next_ch) = self.peek_char() {
+                    if next_ch.is_digit(10) {
+                        let start_col = self.column;
+                        self.read_char();
+
+                        let mut number_str = String::from("0.");
+
+                        while self.ch.is_some() && self.ch.unwrap().is_digit(10) {
+                            number_str.push(self.ch.unwrap());
+                            self.read_char();
+                        }
+
+                        let number = number_str.parse::<f64>().unwrap_or(0.0);
+                        let length = number_str.len() - 1;
+
+                        if self.ch.is_some() && (self.ch.unwrap().is_alphabetic() || self.ch.unwrap() == '%') {
+                            let unit_start_col = self.column;
+                            let unit = self.read_unit();
+
+                            self.next_token_cache = Some(Token::new(TokenType::Unit(unit.clone()),
+                                                                    self.line,
+                                                                    unit_start_col,
+                                                                    unit.len()));
+
+                            return Token::new(TokenType::Number(number), self.line, start_col, length);
+                        }
+
+                        return Token::new(TokenType::Number(number), self.line, start_col, length);
+                    }
+                }
+
                 let token = Token::new(TokenType::Dot, self.line, self.column, 1);
                 self.read_char();
                 token

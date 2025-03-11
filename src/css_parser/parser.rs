@@ -1241,11 +1241,16 @@ impl CssParser {
 
     fn extract_alpha(&self, value: &Value) -> Result<f32, String> {
         match value {
+            Value::Number(num, Some(Unit::Percent)) => {
+                let alpha = num / 100.0;
+                let clamped = alpha.max(0.0).min(1.0);
+                Ok(clamped as f32)
+            },
             Value::Number(num, _) => {
                 let clamped = num.max(0.0).min(1.0);
                 Ok(clamped as f32)
             },
-            _ => Err(format!("Expected number for alpha component, found {:?}", value)),
+            _ => Err(format!("Expected number or percentage for alpha component, found {:?}", value)),
         }
     }
 
