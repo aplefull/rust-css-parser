@@ -106,7 +106,7 @@ mod tests {
         let decl = get_first_declaration(&stylesheet).unwrap();
         assert_eq!(decl.property, "--primary-color");
         assert!(decl.is_custom_property);
-        assert!(matches!(decl.value, Value::Color(Color::Hex(ref hex)) if hex == "3366ff"));
+        assert!(matches!(decl.value, Value::Color(Color::Hex(ref hex)) if hex == "#3366ff"));
     }
 
     #[test]
@@ -118,14 +118,14 @@ mod tests {
         assert!(matches!(decl.value, Value::VarFunction(ref name, None) if name == "--primary-color"));
     }
 
-    /*#[test]
+    #[test]
     fn test_var_function_with_fallback() {
         let css = "#main { padding: var(--spacing-unit, 8px); }";
         let stylesheet = parse(css).unwrap();
 
         let decl = get_first_declaration(&stylesheet).unwrap();
         assert!(matches!(decl.value, Value::VarFunction(ref name, Some(_)) if name == "--spacing-unit"));
-    }*/
+    }
 
     #[test]
     fn test_numeric_values() {
@@ -152,26 +152,78 @@ mod tests {
         assert!(matches!(line_height.value, Value::Number(num, None) if num == 1.6));
     }
 
-    /*#[test]
+    #[test]
     fn test_color_values() {
-        let css = ".colors { color: #f00; background-color: rgb(0, 128, 255); border-color: rgba(255, 0, 0, 0.5); }";
+        let css = r#"
+        .colors {
+            color: blue;
+            color: #ff0000;
+            color: #000;
+            color: rgb(255, 0, 0);
+            color: rgba(255, 0, 0, 0.5);
+            color: rgba(255 0 0 / 0.5);
+            color: rgba(255 0 0 / 1);
+            color: hsl(0, 100%, 50%);
+            color: hsla(0 100% 50% / 0.5);
+            color: transparent;
+            color: currentColor;
+            color: inherit;
+            //color: oklab(0 0.5 0.5);
+        }
+        "#;
         let stylesheet = parse(css).unwrap();
 
         let rule = &stylesheet.rules[0];
-        assert_eq!(rule.declarations.len(), 3);
+        assert_eq!(rule.declarations.len(), 12);
 
         let color = &rule.declarations[0];
         assert_eq!(color.property, "color");
-        assert!(matches!(color.value, Value::Color(Color::Hex(ref hex)) if hex == "f00"));
+        assert!(matches!(color.value, Value::Color(Color::Named(ref name)) if name == "blue"));
 
-        let bg_color = &rule.declarations[1];
-        assert_eq!(bg_color.property, "background-color");
-        assert!(matches!(bg_color.value, Value::Color(Color::Rgb(r, g, b)) if r == 0 && g == 128 && b == 255));
+        let hex = &rule.declarations[1];
+        assert_eq!(hex.property, "color");
+        assert!(matches!(hex.value, Value::Color(Color::Hex(ref hex)) if hex == "#ff0000"));
 
-        let border_color = &rule.declarations[2];
-        assert_eq!(border_color.property, "border-color");
-        assert!(matches!(border_color.value, Value::Color(Color::Rgba(r, g, b, a)) if r == 255 && g == 0 && b == 0 && a == 0.5));
-    }*/
+        let short_hex = &rule.declarations[2];
+        assert_eq!(short_hex.property, "color");
+        assert!(matches!(short_hex.value, Value::Color(Color::Hex(ref hex)) if hex == "#000"));
+
+        let rgb = &rule.declarations[3];
+        assert_eq!(rgb.property, "color");
+        assert!(matches!(rgb.value, Value::Color(Color::Rgb(255, 0, 0))));
+
+        let rgba = &rule.declarations[4];
+        assert_eq!(rgba.property, "color");
+        assert!(matches!(rgba.value, Value::Color(Color::Rgba(255, 0, 0, 0.5))));
+
+        let rgba_percent = &rule.declarations[5];
+        assert_eq!(rgba_percent.property, "color");
+        assert!(matches!(rgba_percent.value, Value::Color(Color::Rgba(255, 0, 0, 0.5))));
+
+        let rgba_percent2 = &rule.declarations[6];
+        assert_eq!(rgba_percent2.property, "color");
+        assert!(matches!(rgba_percent2.value, Value::Color(Color::Rgba(255, 0, 0, 1.0))));
+
+        let hsl = &rule.declarations[7];
+        assert_eq!(hsl.property, "color");
+        assert!(matches!(hsl.value, Value::Color(Color::Hsl(0, 100, 50))));
+
+        let hsla = &rule.declarations[8];
+        assert_eq!(hsla.property, "color");
+        assert!(matches!(hsla.value, Value::Color(Color::Hsla(0, 100, 50, 0.5))));
+
+        let transparent = &rule.declarations[9];
+        assert_eq!(transparent.property, "color");
+        assert!(matches!(transparent.value, Value::Color(Color::Named(ref name)) if name == "transparent"));
+
+        let current_color = &rule.declarations[10];
+        assert_eq!(current_color.property, "color");
+        assert!(matches!(current_color.value, Value::Literal(ref name) if name == "currentColor"));
+
+        let inherit = &rule.declarations[11];
+        assert_eq!(inherit.property, "color");
+        assert!(matches!(inherit.value, Value::Keyword(ref name) if name == "inherit"));
+    }
 
     #[test]
     fn test_function_values() {

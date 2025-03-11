@@ -306,22 +306,6 @@ impl Lexer {
         }
     }
 
-    fn read_unit_token(&self, start_col: usize) -> (TokenType, usize) {
-        let start_position = self.position;
-        let mut end_position = start_position;
-
-        for c in self.input[start_position..].chars() {
-            if c.is_alphabetic() || c == '%' {
-                end_position += c.len_utf8();
-            } else {
-                break;
-            }
-        }
-
-        let unit = &self.input[start_position..end_position];
-        (TokenType::Unit(unit.to_string()), end_position - start_position)
-    }
-
     fn skip_whitespace(&mut self) {
         while self.ch.is_some() {
             let ch = self.ch.unwrap();
