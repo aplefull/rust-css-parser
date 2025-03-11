@@ -135,11 +135,18 @@ impl Lexer {
         if self.read_position >= self.input.len() {
             self.ch = None;
         } else {
-            self.ch = Some(self.input.chars().nth(self.read_position).unwrap());
-        }
+            let mut chars = self.input[self.read_position..].chars();
+            let current_char = chars.next();
 
-        self.position = self.read_position;
-        self.read_position += 1;
+            self.ch = current_char;
+
+            self.position = self.read_position;
+            if let Some(ch) = current_char {
+                self.read_position += ch.len_utf8();
+            } else {
+                self.read_position += 1;
+            }
+        }
 
         if let Some(ch) = self.ch {
             if ch == '\n' {
@@ -155,7 +162,7 @@ impl Lexer {
         if self.read_position >= self.input.len() {
             None
         } else {
-            Some(self.input.chars().nth(self.read_position).unwrap())
+            self.input[self.read_position..].chars().next()
         }
     }
 
