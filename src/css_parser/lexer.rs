@@ -17,6 +17,7 @@ pub enum TokenType {
     Dot,             // .
     Asterisk,        // *
     ExclamationMark, // !
+    Backslash,       // \
 
     // Math operators
     Plus,            // +
@@ -70,6 +71,7 @@ impl fmt::Display for TokenType {
             TokenType::Plus => write!(f, "+"),
             TokenType::Minus => write!(f, "-"),
             TokenType::Slash => write!(f, "/"),
+            TokenType::Backslash => write!(f, "\\"),
             TokenType::GreaterThan => write!(f, ">"),
             TokenType::Tilde => write!(f, "~"),
             TokenType::Equals => write!(f, "="),
@@ -340,6 +342,11 @@ impl Lexer {
                     self.read_char();
                     token
                 }
+            },
+            '\\' => {
+                let token = Token::new(TokenType::Backslash, self.line, self.column, 1);
+                self.read_char();
+                token
             },
             '#' => {
                 let start_col = self.column;

@@ -1105,6 +1105,7 @@ impl CssParser {
 
     fn parse_color_function(&mut self, function_name: String) -> Result<Value, String> {
         let mut has_slash = false;
+        let mut contains_var = false;
         let mut components = Vec::new();
 
         while let Some(token) = self.peek_token() {
@@ -1127,9 +1128,18 @@ impl CssParser {
                 },
                 _ => {
                     let component = self.parse_value()?;
+
+                    if let Value::VarFunction(_, _) = &component {
+                        contains_var = true;
+                    }
+
                     components.push(component);
                 }
             }
+        }
+
+        if contains_var {
+            return Ok(Value::Function(function_name, components));
         }
 
         match function_name.as_str() {
@@ -1387,17 +1397,10 @@ impl CssParser {
                             current_unquoted_string.clear();
                         }
 
-                        if separator.is_some() && separator != Some(ListSeparator::Comma) {
-                            let is_font_like_list = values.iter().all(|v| {
-                                matches!(v, Value::Literal(_) | Value::QuotedString(_) | Value::Keyword(_))
-                            });
-
-                            if !is_font_like_list {
-                                return Err("Mixed separators in list not allowed".to_string());
-                            }
+                        if separator.is_none() {
+                            separator = Some(ListSeparator::Comma);
                         }
 
-                        separator = Some(ListSeparator::Comma);
                         self.next_token();
 
                         let next_value = self.parse_value()?;
@@ -1416,17 +1419,10 @@ impl CssParser {
                             current_unquoted_string.push_str(ident);
                             self.next_token();
                         } else {
-                            if separator.is_some() && separator != Some(ListSeparator::Space) {
-                                let is_font_like_list = values.iter().all(|v| {
-                                    matches!(v, Value::Literal(_) | Value::QuotedString(_) | Value::Keyword(_))
-                                });
-
-                                if !is_font_like_list {
-                                    return Err("Mixed separators in list not allowed".to_string());
-                                }
+                            if separator.is_none() {
+                                separator = Some(ListSeparator::Space);
                             }
 
-                            separator = Some(ListSeparator::Space);
                             let result = self.parse_value();
                             match result {
                                 Ok(next_value) => {
@@ -1442,17 +1438,10 @@ impl CssParser {
                         let result = self.parse_value();
                         match result {
                             Ok(next_value) => {
-                                if separator.is_some() && separator != Some(ListSeparator::Space) {
-                                    let is_font_like_list = values.iter().all(|v| {
-                                        matches!(v, Value::Literal(_) | Value::QuotedString(_) | Value::Keyword(_))
-                                    });
-
-                                    if !is_font_like_list {
-                                        return Err("Mixed separators in list not allowed".to_string());
-                                    }
+                                if separator.is_none() {
+                                    separator = Some(ListSeparator::Space);
                                 }
 
-                                separator = Some(ListSeparator::Space);
                                 values.push(next_value);
                             },
                             Err(_) => {
@@ -1480,7 +1469,7 @@ impl CssParser {
             Ok(Value::List(values, separator.unwrap_or(ListSeparator::Space)))
         }
     }
-
+    
     fn expect_open_paren(&mut self) -> Result<(), String> {
         if let Some(token) = self.next_token() {
             match token.token_type {
