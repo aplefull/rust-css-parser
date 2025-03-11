@@ -174,13 +174,19 @@ impl CssParser {
         let rule_type = if let Some(token) = self.next_token() {
             match &token.token_type {
                 TokenType::Identifier(name) => {
-                    match name.to_lowercase().as_str() {
-                        "media" => AtRuleType::Media,
-                        "keyframes" => AtRuleType::Keyframes,
-                        "import" => AtRuleType::Import,
-                        "font-face" => AtRuleType::FontFace,
-                        "supports" => AtRuleType::Supports,
-                        _ => AtRuleType::Unknown(name.clone()),
+                    let name_lower = name.to_lowercase();
+                    if name_lower == "media" {
+                        AtRuleType::Media
+                    } else if name_lower == "keyframes" || name_lower.ends_with("-keyframes") {
+                        AtRuleType::Keyframes
+                    } else if name_lower == "import" {
+                        AtRuleType::Import
+                    } else if name_lower == "font-face" {
+                        AtRuleType::FontFace
+                    } else if name_lower == "supports" {
+                        AtRuleType::Supports
+                    } else {
+                        AtRuleType::Unknown(name.clone())
                     }
                 },
                 _ => return Err(format!("Expected identifier after @, found {:?}", token.token_type)),
@@ -225,7 +231,11 @@ impl CssParser {
                     break;
                 },
                 _ => {
-                    let rule = self.parse_rule()?;
+                    let rule = if matches!(rule_type, AtRuleType::Keyframes) {
+                        self.parse_keyframe_rule()?
+                    } else {
+                        self.parse_rule()?
+                    };
                     rules.push(rule);
                 }
             }
@@ -1262,6 +1272,72 @@ impl CssParser {
             },
             _ => Err(format!("Expected number or percentage for alpha component, found {:?}", value)),
         }
+    }
+
+    fn parse_keyframe_rule(&mut self) -> Result<Rule, String> {
+        let mut selectors = Vec::new();
+        let first_selector = self.parse_keyframe_selector()?;
+        selectors.push(first_selector);
+
+        while let Some(token) = self.peek_token() {
+            if matches!(token.token_type, TokenType::Comma) {
+                self.next_token();
+                let next_selector = self.parse_keyframe_selector()?;
+                selectors.push(next_selector);
+            } else {
+                break;
+            }
+        }
+
+        self.expect_open_brace()?;
+        let declarations = self.parse_declarations()?;
+        self.expect_close_brace()?;
+
+        Ok(Rule {
+            selectors,
+            declarations,
+        })
+    }
+
+    fn parse_keyframe_selector(&mut self) -> Result<Selector, String> {
+        let mut group = SelectorGroup { parts: Vec::new() };
+
+        if let Some(token) = self.peek_token() {
+            match &token.token_type {
+                TokenType::Identifier(name) if name.to_lowercase() == "from" || name.to_lowercase() == "to" => {
+                    let name_clone = name.clone();
+                    self.next_token();
+                    group.parts.push(SelectorPart::Element(name_clone));
+                },
+                TokenType::Number(num) => {
+                    let number = *num;
+                    self.next_token();
+
+                    if let Some(token) = self.peek_token() {
+                        if let TokenType::Unit(unit) = &token.token_type {
+                            if unit == "%" {
+                                self.next_token();
+                                group.parts.push(SelectorPart::Element(format!("{}%", number)));
+                            } else {
+                                return Err(format!("Expected % unit in keyframe selector, found {:?}", token.token_type));
+                            }
+                        } else {
+                            return Err(format!("Expected % unit in keyframe selector, found {:?}", token.token_type));
+                        }
+                    } else {
+                        return Err("Unexpected end of input after number in keyframe selector".to_string());
+                    }
+                },
+                _ => return Err(format!("Expected 'from', 'to', or percentage value, found {:?}", token.token_type)),
+            }
+        } else {
+            return Err("Unexpected end of input while parsing keyframe selector".to_string());
+        }
+
+        Ok(Selector {
+            groups: vec![group],
+            combinators: Vec::new(),
+        })
     }
 
     fn parse_var_function(&mut self) -> Result<Value, String> {
