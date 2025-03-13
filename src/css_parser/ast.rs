@@ -232,22 +232,14 @@ impl fmt::Display for Unit {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Color {
-    Hex(String),                    // #fff, #ff0000
-    Rgb(u8, u8, u8),                // rgb(255, 0, 0)
-    Rgba(u8, u8, u8, f32),          // rgba(255, 0, 0, 0.5)
-    Hsl(u16, u8, u8),               // hsl(0, 100%, 50%)
-    Hsla(u16, u8, u8, f32),         // hsla(0, 100%, 50%, 0.5)
-    Named(String),                  // red, blue, transparent
+    Hex(String),       // #fff, #ff0000
+    Named(String),     // red, blue, transparent
 }
 
 impl fmt::Display for Color {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Color::Hex(hex) => write!(f, "{}", hex),
-            Color::Rgb(r, g, b) => write!(f, "rgb({}, {}, {})", r, g, b),
-            Color::Rgba(r, g, b, a) => write!(f, "rgba({}, {}, {}, {})", r, g, b, a),
-            Color::Hsl(h, s, l) => write!(f, "hsl({}, {}%, {}%)", h, s, l),
-            Color::Hsla(h, s, l, a) => write!(f, "hsla({}, {}%, {}%, {})", h, s, l, a),
             Color::Named(name) => write!(f, "{}", name),
         }
     }
@@ -335,7 +327,7 @@ impl ValueExt for Value {
                 } else {
                     num.to_string()
                 };
-                
+
                 value_str == value
             }
             v => {
@@ -343,7 +335,7 @@ impl ValueExt for Value {
             }
         }
     }
-    
+
     fn is_value(&self, value: &Value) -> bool {
         match self {
             Value::Keyword(keyword) => {
@@ -386,7 +378,7 @@ impl ValueExt for Value {
             }
         }
     }
-    
+
     fn is_function(&self, name: &str, arguments: Vec<Value>) -> bool {
         match self {
             Value::Function(func_name, func_args) => {
@@ -411,7 +403,7 @@ impl ValueExt for Value {
             }
         }
     }
-    
+
     fn is_variable(&self, name: &str, fallback: Option<Box<Value>>) -> bool {
         match self {
             Value::VarFunction(var_name, var_fallback) => {
@@ -459,16 +451,103 @@ impl fmt::Display for Value {
             Value::Color(color) => write!(f, "{}", color),
             Value::Function(name, args) => {
                 write!(f, "{}(", name)?;
-                let mut first = true;
-                for arg in args {
-                    if !first {
-                        write!(f, ", ")?;
+
+                let special_functions = ["color-mix", "palette-mix"];
+                if special_functions.contains(&name.to_lowercase().as_str()) && args.len() == 3 {
+                    write!(f, "in ")?;
+                    match &args[0] {
+                        Value::List(items, ListSeparator::Space) => {
+                            let mut first = true;
+                            for item in items {
+                                if !first {
+                                    write!(f, " ")?;
+                                }
+                                write!(f, "{}", item)?;
+                                first = false;
+                            }
+                        },
+                        _ => write!(f, "{}", args[0])?,
                     }
-                    write!(f, "{}", arg)?;
-                    first = false;
+
+                    write!(f, ", ")?;
+
+                    match &args[1] {
+                        Value::List(items, ListSeparator::Space) => {
+                            let mut first = true;
+                            for item in items {
+                                if !first {
+                                    write!(f, " ")?;
+                                }
+                                write!(f, "{}", item)?;
+                                first = false;
+                            }
+                        },
+                        _ => write!(f, "{}", args[1])?,
+                    }
+
+                    write!(f, ", ")?;
+
+                    match &args[2] {
+                        Value::List(items, ListSeparator::Space) => {
+                            let mut first = true;
+                            for item in items {
+                                if !first {
+                                    write!(f, " ")?;
+                                }
+                                write!(f, "{}", item)?;
+                                first = false;
+                            }
+                        },
+                        _ => write!(f, "{}", args[2])?,
+                    }
                 }
+                else {
+                    if args.len() <= 3 && args.len() >= 1 {
+                        match &args[0] {
+                            Value::List(items, ListSeparator::Space) => {
+                                let mut first = true;
+                                for item in items {
+                                    if !first {
+                                        write!(f, " ")?;
+                                    }
+                                    write!(f, "{}", item)?;
+                                    first = false;
+                                }
+                            },
+                            _ => write!(f, "{}", args[0])?,
+                        }
+
+                        if args.len() >= 3 && args[1].to_string() == "/" {
+                            write!(f, " / ")?;
+
+                            match &args[2] {
+                                Value::List(items, ListSeparator::Space) => {
+                                    let mut first = true;
+                                    for item in items {
+                                        if !first {
+                                            write!(f, " ")?;
+                                        }
+                                        write!(f, "{}", item)?;
+                                        first = false;
+                                    }
+                                },
+                                _ => write!(f, "{}", args[2])?,
+                            }
+                        }
+                    } else {
+                        let mut first = true;
+                        for arg in args {
+                            if !first {
+                                write!(f, ", ")?;
+                            }
+                            write!(f, "{}", arg)?;
+                            first = false;
+                        }
+                    }
+                }
+
                 write!(f, ")")
-            },
+            }
             Value::VarFunction(name, None) => write!(f, "var({})", name),
             Value::VarFunction(name, Some(fallback)) => write!(f, "var({}, {})", name, fallback),
             Value::List(items, ListSeparator::Space) => {
@@ -560,11 +639,11 @@ impl RuleExt for Rule {
     fn get_declaration(&self, property: &str) -> Option<&Declaration> {
         self.declarations.iter().find(|decl| decl.property == property)
     }
-    
+
     fn get_declarations(&self, property: &str) -> Vec<&Declaration> {
         self.declarations.iter().filter(|decl| decl.property == property).collect()
     }
-    
+
     fn get_declaration_value(&self, property: &str) -> Option<&Value> {
         self.get_declaration(property).map(|decl| &decl.value)
     }

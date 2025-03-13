@@ -299,7 +299,6 @@ impl CssParser {
             },
 
             _ => {
-                // For other at-rules like @media, @supports, etc.
                 while let Some(token) = self.peek_token() {
                     match &token.token_type {
                         TokenType::CloseBrace => {
@@ -307,12 +306,10 @@ impl CssParser {
                             break;
                         },
                         TokenType::AtSymbol => {
-                            // Parse nested at-rule
                             let nested_at_rule = self.parse_at_rule()?;
                             nested_at_rules.push(nested_at_rule);
                         },
                         _ => {
-                            // Parse regular CSS rule
                             let rule = self.parse_rule()?;
                             rules.push(rule);
                         }
@@ -843,7 +840,8 @@ impl CssParser {
         }
 
         let color_functions = [
-            "rgb", "rgba", "hsl", "hsla", "hwb", "lab", "lch", "oklab", "oklch", "color", "device-cmyk"
+            "rgb", "rgba", "hsl", "hsla", "hwb", "lab", "lch", "oklab", "oklch", "color", "device-cmyk",
+            "color-mix", "palette-mix"
         ];
 
         if color_functions.contains(&name.as_str()) {
@@ -1008,7 +1006,6 @@ impl CssParser {
             return Err(format!("Function {} requires at least one argument", name));
         }
 
-        // For clamp, ensure we have exactly 3 arguments
         if name.to_lowercase() == "clamp" && arguments.len() != 3 {
             return Err("clamp() function requires exactly 3 arguments: minimum, preferred, and maximum".to_string());
         }
@@ -1330,9 +1327,16 @@ impl CssParser {
     }
 
     fn parse_color_function(&mut self, function_name: String) -> Result<Value, String> {
-        let mut has_slash = false;
-        let mut contains_var = false;
+        let special_functions = ["color-mix", "palette-mix"];
+        if special_functions.contains(&function_name.to_lowercase().as_str()) {
+            return self.parse_special_color_function(function_name);
+        }
+
         let mut components = Vec::new();
+
+        let mut pre_slash_components = Vec::new();
+        let mut post_slash_components = Vec::new();
+        let mut has_slash = false;
 
         while let Some(token) = self.peek_token() {
             match &token.token_type {
@@ -1354,139 +1358,165 @@ impl CssParser {
                 },
                 _ => {
                     let component = self.parse_value()?;
-
-                    if let Value::VarFunction(_, _) = &component {
-                        contains_var = true;
+                    if has_slash {
+                        post_slash_components.push(component);
+                    } else {
+                        pre_slash_components.push(component);
                     }
-
-                    components.push(component);
                 }
             }
         }
 
-        if contains_var {
-            return Ok(Value::Function(function_name, components));
+        let pre_slash_list = if pre_slash_components.len() > 1 {
+            Value::List(pre_slash_components, ListSeparator::Space)
+        } else if pre_slash_components.len() == 1 {
+            pre_slash_components.remove(0)
+        } else {
+            Value::Literal("".to_string())
+        };
+
+        components.push(pre_slash_list);
+
+        if has_slash {
+            components.push(Value::Literal("/".to_string()));
+
+            let post_slash_list = if post_slash_components.len() > 1 {
+                Value::List(post_slash_components, ListSeparator::Space)
+            } else if post_slash_components.len() == 1 {
+                post_slash_components.remove(0)
+            } else {
+                Value::Literal("".to_string())
+            };
+
+            components.push(post_slash_list);
         }
 
-        match function_name.as_str() {
-            "rgb" | "rgba" => {
-                if components.len() < 3 || components.len() > 4 {
-                    return Err(format!("RGB function requires 3 or 4 components, found {}", components.len()));
-                }
+        Ok(Value::Function(function_name, components))
+    }
 
-                let r = self.extract_component(&components[0])?;
-                let g = self.extract_component(&components[1])?;
-                let b = self.extract_component(&components[2])?;
+    fn parse_special_color_function(&mut self, function_name: String) -> Result<Value, String> {
+        if let Some(token) = self.next_token() {
+            match &token.token_type {
+                TokenType::Identifier(word) if word.to_lowercase() == "in" => {},
+                _ => return Err(format!("Expected 'in' after {}, found {:?}", function_name, token.token_type)),
+            }
+        } else {
+            return Err(format!("Unexpected end of input after {}", function_name));
+        }
 
-                if components.len() == 4 || has_slash {
-                    let alpha_idx = if has_slash { 3 } else { 3 };
-                    if alpha_idx < components.len() {
-                        let a = self.extract_alpha(&components[alpha_idx])?;
-                        Ok(Value::Color(Color::Rgba(r, g, b, a)))
-                    } else {
-                        Err("Expected alpha component after slash".to_string())
+        let mut color_space_components = Vec::new();
+
+        if let Some(token) = self.peek_token() {
+            match &token.token_type {
+                TokenType::Identifier(_) => {
+                    let space = self.parse_value()?;
+                    color_space_components.push(space);
+                },
+                _ => return Err(format!("Expected color space name, found {:?}", token.token_type)),
+            }
+        } else {
+            return Err("Unexpected end of input while parsing color space".to_string());
+        }
+
+        while let Some(token) = self.peek_token() {
+            match &token.token_type {
+                TokenType::Identifier(_) => {
+                    let peek_token = self.peek_token().unwrap();
+                    if let TokenType::Comma = peek_token.token_type {
+                        break;
                     }
-                } else {
-                    Ok(Value::Color(Color::Rgb(r, g, b)))
-                }
-            },
-            "hsl" | "hsla" => {
-                if components.len() < 3 || components.len() > 4 {
-                    return Err(format!("HSL function requires 3 or 4 components, found {}", components.len()));
-                }
 
-                let h = self.extract_hue(&components[0])?;
-                let s = self.extract_percentage(&components[1])?;
-                let l = self.extract_percentage(&components[2])?;
-
-                if components.len() == 4 || has_slash {
-                    let alpha_idx = if has_slash { 3 } else { 3 };
-                    if alpha_idx < components.len() {
-                        let a = self.extract_alpha(&components[alpha_idx])?;
-                        Ok(Value::Color(Color::Hsla(h, s, l, a)))
-                    } else {
-                        Err("Expected alpha component after slash".to_string())
-                    }
-                } else {
-                    Ok(Value::Color(Color::Hsl(h, s, l)))
-                }
-            },
-            "hwb" => {
-                if components.len() < 3 {
-                    return Err(format!("HWB function requires at least 3 components, found {}", components.len()));
-                }
-
-                Ok(Value::Function("hwb".to_string(), components))
-            },
-            "lab" => {
-                if components.len() < 3 {
-                    return Err(format!("LAB function requires at least 3 components, found {}", components.len()));
-                }
-
-                Ok(Value::Function("lab".to_string(), components))
-            },
-            "lch" => {
-                if components.len() < 3 {
-                    return Err(format!("LCH function requires at least 3 components, found {}", components.len()));
-                }
-
-                Ok(Value::Function("lch".to_string(), components))
-            },
-            "color" => {
-                if components.len() < 1 {
-                    return Err("Color function requires a color space parameter".to_string());
-                }
-
-                Ok(Value::Function("color".to_string(), components))
-            },
-            _ => {
-                Err(format!("Unsupported color function: {}", function_name))
+                    let component = self.parse_value()?;
+                    color_space_components.push(component);
+                },
+                TokenType::Comma => {
+                    break;
+                },
+                _ => return Err(format!("Unexpected token in color space specification: {:?}", token.token_type)),
             }
         }
-    }
 
-    fn extract_component(&self, value: &Value) -> Result<u8, String> {
-        match value {
-            Value::Number(num, _) => {
-                let clamped = num.max(0.0).min(255.0);
-                Ok(clamped as u8)
-            },
-            _ => Err(format!("Expected number for color component, found {:?}", value)),
+        let color_space = Value::List(color_space_components, ListSeparator::Space);
+
+        if let Some(token) = self.peek_token() {
+            if !matches!(token.token_type, TokenType::Comma) {
+                return Err(format!("Expected comma after color space, found {:?}", token.token_type));
+            }
+            self.next_token();
+        } else {
+            return Err("Unexpected end of input after color space".to_string());
         }
-    }
 
-    fn extract_hue(&self, value: &Value) -> Result<u16, String> {
-        match value {
-            Value::Number(num, _) => {
-                let wrapped = num.rem_euclid(360.0);
-                Ok(wrapped as u16)
-            },
-            _ => Err(format!("Expected number for hue component, found {:?}", value)),
+        let first_color = self.parse_color_mix_argument()?;
+
+        if let Some(token) = self.peek_token() {
+            if !matches!(token.token_type, TokenType::Comma) {
+                return Err(format!("Expected comma after first color, found {:?}", token.token_type));
+            }
+            self.next_token();
+        } else {
+            return Err("Unexpected end of input after first color".to_string());
         }
-    }
 
-    fn extract_percentage(&self, value: &Value) -> Result<u8, String> {
-        match value {
-            Value::Number(num, Some(Unit::Percent)) => {
-                let clamped = num.max(0.0).min(100.0);
-                Ok(clamped as u8)
-            },
-            _ => Err(format!("Expected percentage for saturation/lightness component, found {:?}", value)),
+        let second_color = self.parse_color_mix_argument()?;
+
+        if let Some(token) = self.peek_token() {
+            if !matches!(token.token_type, TokenType::CloseParen) {
+                return Err(format!("Expected closing parenthesis, found {:?}", token.token_type));
+            }
+            self.next_token();
+        } else {
+            return Err("Unexpected end of input while parsing color-mix".to_string());
         }
+
+        let args = vec![
+            color_space,
+            first_color,
+            second_color
+        ];
+
+        Ok(Value::Function(function_name, args))
     }
 
-    fn extract_alpha(&self, value: &Value) -> Result<f32, String> {
-        match value {
-            Value::Number(num, Some(Unit::Percent)) => {
-                let alpha = num / 100.0;
-                let clamped = alpha.max(0.0).min(1.0);
-                Ok(clamped as f32)
-            },
-            Value::Number(num, _) => {
-                let clamped = num.max(0.0).min(1.0);
-                Ok(clamped as f32)
-            },
-            _ => Err(format!("Expected number or percentage for alpha component, found {:?}", value)),
+    fn parse_color_mix_argument(&mut self) -> Result<Value, String> {
+        let mut components = Vec::new();
+
+        if let Some(token) = self.peek_token() {
+            match &token.token_type {
+                TokenType::Identifier(name) if name.to_lowercase() == "color-mix" || name.to_lowercase() == "palette-mix" => {
+                    let name_clone = name.clone();
+                    self.next_token();
+
+                    if let Some(token) = self.peek_token() {
+                        if !matches!(token.token_type, TokenType::OpenParen) {
+                            return Err(format!("Expected opening parenthesis after {}, found {:?}", name_clone, token.token_type));
+                        }
+                        self.next_token();
+                    }
+
+                    let nested_function = self.parse_special_color_function(name_clone)?;
+                    components.push(nested_function);
+                },
+                _ => {
+                    let color = self.parse_value()?;
+                    components.push(color);
+                }
+            }
+        } else {
+            return Err("Unexpected end of input while parsing color mix argument".to_string());
+        }
+
+        if let Some(token) = self.peek_token() {
+            if let TokenType::Number(_) = token.token_type {
+                let percentage = self.parse_value()?;
+                components.push(percentage);
+            }
+        }
+
+        if components.len() > 1 {
+            Ok(Value::List(components, ListSeparator::Space))
+        } else {
+            Ok(components.remove(0))
         }
     }
 

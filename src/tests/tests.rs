@@ -15,7 +15,7 @@ mod tests {
     fn get_first_selector_part(stylesheet: &Stylesheet) -> Option<&SelectorPart> {
         stylesheet.rules.first()?.selectors.first()?.groups.first()?.parts.first()
     }
-    
+
     #[test]
     fn test_font_families() {
         let css = "body { font-family: Arial, \"Helvetica Neue\", sans-serif; }";
@@ -31,7 +31,7 @@ mod tests {
             assert!(matches!(items[2], Value::Literal(ref name) if name == "sans-serif"));
         }
     }
-    
+
     #[test]
     fn test_misc() {
         let css = r#"
@@ -95,6 +95,34 @@ mod tests {
         //         width: 768px
         //     }
         // }
+        // TODO  color: rgba(var(--test) / calc(4 + 8));
+        //     color: oklab(40.1% 0.1143 0.045);
+        //     color: oklab(59.69% 0.1007 0.1191);
+        //     color: oklab(59.69% 0.1007 0.1191 / 0.5);
+        //     color: oklab(from green l a b / 0.5);
+        //     color: oklab(from #0000FF calc(l + 0.1) a b / calc(alpha * 0.9));
+        //     color: oklab(from hsl(180 100% 50%) calc(l - 0.1) a b);
+        //     /* color-mix(in <polar-color-space>, <color>, <color> <percentage>) */
+        //     color: color-mix(in hsl, hsl(200 50 80), coral 80%);
+        //      /* color-mix(in <polar-color-space> <hue-interpolation-method>, <color>, <color>) */
+        //  color: color-mix(in lch longer hue, hsl(200deg 50% 80%), coral);
+        //      /* color-mix(in <rectangular-color-space>, <color>, <color>) */
+        //  color: color-mix(in srgb, plum, #f00);
+        //      /* color-mix(in <rectangular-color-space>, <color> <percentage>, <color> <percentage> */
+        //  color: color-mix(in lab, plum 60%, #f00 50%);
+        //         /* color-mix(in <custom-color-space>, <color>, <color>) */
+        //     color: color-mix(in --swop5c, red, blue);
+        //     /* Blending font-defined palettes */
+        //     font-palette: palette-mix(in lch, normal, dark);
+        //     /* Blending author-defined palettes */
+        //     font-palette: palette-mix(in lch, --blues, --yellows);
+        //     /* Varying percentage of each palette mixed */
+        //     font-palette: palette-mix(in lch, --blues 50%, --yellows 50%);
+        //     font-palette: palette-mix(in lch, --blues 70%, --yellows 30%);
+        //     /* Varying color interpolation method */
+        //     font-palette: palette-mix(in srgb, --blues, --yellows);
+        //     font-palette: palette-mix(in hsl, --blues, --yellows);
+        //     font-palette: palette-mix(in hsl shorter hue, --blues, --yellows);
 
     }
 }
