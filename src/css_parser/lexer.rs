@@ -45,6 +45,7 @@ pub enum TokenType {
 
     // Special CSS values
     Unit(String),            // px, em, %, etc.
+    UnicodeRange(String),    // U+XXXX
 
     // End of file
     EOF,
@@ -82,6 +83,7 @@ impl fmt::Display for TokenType {
             TokenType::Number(val) => write!(f, "Number({})", val),
             TokenType::String(val) => write!(f, "String(\"{}\")", val),
             TokenType::Unit(val) => write!(f, "Unit({})", val),
+            TokenType::UnicodeRange(val) => write!(f, "UnicodeRange({})", val),
             TokenType::EOF => write!(f, "EOF"),
         }
     }
@@ -407,6 +409,16 @@ impl Lexer {
                 self.read_char();
                 Token::new(TokenType::String(string), self.line, start_col, length)
             },
+            'U' => {
+                if self.peek_char() == Some('+') {
+                    self.read_unicode_range()
+                } else {
+                    let start_col = self.column;
+                    let identifier = self.read_identifier();
+                    Token::new(TokenType::Identifier(identifier.clone()),
+                                      self.line, start_col, identifier.len())
+                }
+            },
             '0'..='9' | '-' => {
                 let start_col = self.column;
 
@@ -519,6 +531,35 @@ impl Lexer {
             start_line, start_column,
             url_identifier.len()
         )
+    }
+
+    fn read_unicode_range(&mut self) -> Token {
+        let start_position = self.position;
+        let start_column = self.column;
+        let start_line = self.line;
+
+        self.read_char();
+
+        if self.ch != Some('+') {
+            return Token::new(TokenType::Identifier("U".to_string()),
+                              start_line, start_column, 1);
+        }
+
+        self.read_char();
+
+        while self.ch.is_some() {
+            let ch = self.ch.unwrap();
+
+            if ch.is_digit(16) || ch == '-' || ch == '?' {
+                self.read_char();
+            } else {
+                break;
+            }
+        }
+
+        let unicode_range = self.input[start_position..self.position].to_string();
+        Token::new(TokenType::UnicodeRange(unicode_range.clone()),
+                   start_line, start_column, unicode_range.len())
     }
     
     fn skip_whitespace(&mut self) {

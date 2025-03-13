@@ -561,6 +561,11 @@ impl CssParser {
                     Ok(Value::QuotedString(text_clone))
                 },
                 TokenType::Hash => self.parse_hex_color(),
+                TokenType::UnicodeRange(range) => {
+                    let range_clone = range.clone();
+                    self.next_token();
+                    Ok(Value::Literal(range_clone))
+                },
                 _ => {
                     let token = self.next_token().unwrap();
                     Ok(Value::Literal(format!("{}", token.token_type)))
