@@ -1,3 +1,120 @@
 .class {
     color: red;
 }
+
+#id {
+    background-color: white;
+}
+
+element {
+    font-size: 12px;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+[attribute="value"] {
+    display: block;
+}
+
+.numeric-values {
+    width: 100px;
+    height: 50vh;
+    margin: 10px;
+    padding: 5vw;
+    font-size: 12pt;
+    border-width: 2mm;
+    outline-width: 0.5cm;
+    letter-spacing: 0.1in;
+    word-spacing: 3q;
+    max-width: 80%;
+    min-height: 10em;
+    line-height: 1.6;
+    text-indent: 2ex;
+    min-width: 10vmin;
+    max-height: 20vmax;
+    flex-basis: 30fr;
+    animation-duration: 2s;
+    transition-duration: 500ms;
+}
+
+.custom-properties {
+    --primary-color: #3366ff;
+    --secondary-color: #ff6633;
+    --text-content: "Hello, world;";
+}
+
+.variables {
+    color: var(--primary-color);
+    background-color: var(--secondary-color, red);
+    background: var(--primary-color, /*!*/ /*!*/);
+}
+
+div.container {
+    max-width: 1200px;
+}
+
+header#main-header {
+    position: sticky;
+}
+
+input[type="text"] {
+    border-radius: 4px;
+}
+
+.navigation#primary {
+    background-color: #333333;
+}
+
+nav li {
+    list-style: none;
+}
+
+ul > li {
+    margin-bottom: 10px;
+}
+
+h2 + p {
+    font-weight: bold;
+}
+
+h1 ~ p {
+    color: #666666;
+}
+
+header nav > ul.menu li a {
+    text-decoration: none;
+}
+
+.btn.btn-primary {
+    background-color: blue;
+}
+
+a[href^="https"] {
+    color: green;
+}
+
+a[href$=".pdf"] {
+    color: red;
+}
+
+a[href*="example"] {
+    font-style: italic;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+p::first-line {
+    font-variant: small-caps;
+}
+
+p:nth-child(2n+1) {
+    background-color: #f5f5f5;
+}
+
+.content:before {
+    content: "Reserved characters: .{} !important a > b '' `` \"\"";
+}

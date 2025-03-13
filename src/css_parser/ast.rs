@@ -309,6 +309,133 @@ impl fmt::Display for CalcExpression {
     }
 }
 
+pub trait ValueExt {
+    fn is(&self, value: &str) -> bool;
+    fn is_value(&self, value: &Value) -> bool;
+    fn is_function(&self, name: &str, arguments: Vec<Value>) -> bool;
+    fn is_variable(&self, name: &str, fallback: Option<Box<Value>>) -> bool;
+}
+
+impl ValueExt for Value {
+    fn is(&self, value: &str) -> bool {
+        match self {
+            Value::Keyword(keyword) => keyword == value,
+            Value::Literal(text) => text == value,
+            Value::QuotedString(text) => text == value,
+            Value::Color(color) => {
+                match color {
+                    Color::Named(name) => name == value,
+                    Color::Hex(hex) => hex == value,
+                    _ => false
+                }
+            },
+            Value::Number(num, unit) => {
+                let value_str = if let Some(unit) = unit {
+                    format!("{}{}", num, unit)
+                } else {
+                    num.to_string()
+                };
+                
+                value_str == value
+            }
+            v => {
+                panic!("Value::is() called on unsupported value type: {:?}", v);
+            }
+        }
+    }
+    
+    fn is_value(&self, value: &Value) -> bool {
+        match self {
+            Value::Keyword(keyword) => {
+                if let Value::Keyword(other_keyword) = value {
+                    keyword == other_keyword
+                } else {
+                    false
+                }
+            },
+            Value::Literal(text) => {
+                if let Value::Literal(other_text) = value {
+                    text == other_text
+                } else {
+                    false
+                }
+            },
+            Value::QuotedString(text) => {
+                if let Value::QuotedString(other_text) = value {
+                    text == other_text
+                } else {
+                    false
+                }
+            },
+            Value::Color(color) => {
+                if let Value::Color(other_color) = value {
+                    color == other_color
+                } else {
+                    false
+                }
+            },
+            Value::Number(num, unit) => {
+                if let Value::Number(other_num, other_unit) = value {
+                    num == other_num && unit == other_unit
+                } else {
+                    false
+                }
+            },
+            v => {
+                panic!("Value::is_value() called on unsupported value type: {:?}", v);
+            }
+        }
+    }
+    
+    fn is_function(&self, name: &str, arguments: Vec<Value>) -> bool {
+        match self {
+            Value::Function(func_name, func_args) => {
+                if func_name != name {
+                    return false;
+                }
+
+                if func_args.len() != arguments.len() {
+                    return false;
+                }
+
+                for (i, arg) in func_args.iter().enumerate() {
+                    if !arg.is_value(&arguments[i]) {
+                        return false;
+                    }
+                }
+
+                true
+            },
+            v => {
+                panic!("Value::is_function() called on unsupported value type: {:?}", v);
+            }
+        }
+    }
+    
+    fn is_variable(&self, name: &str, fallback: Option<Box<Value>>) -> bool {
+        match self {
+            Value::VarFunction(var_name, var_fallback) => {
+                if var_name != name {
+                    return false;
+                }
+
+                if let Some(fallback) = fallback {
+                    if let Some(var_fallback) = var_fallback {
+                        fallback.is(var_fallback.to_string().as_str())
+                    } else {
+                        false
+                    }
+                } else {
+                    var_fallback.is_none()
+                }
+            },
+            v => {
+                panic!("Value::is_variable() called on unsupported value type: {:?}", v);
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Value {
     Literal(String),
@@ -372,6 +499,29 @@ impl fmt::Display for Value {
     }
 }
 
+pub trait DeclarationExt {
+    fn has_color(&self, color_str: &str) -> bool;
+    fn color_is(&self, color_type: &str, value: &str) -> bool;
+}
+
+impl DeclarationExt for Declaration {
+    fn has_color(&self, color_str: &str) -> bool {
+        match &self.value {
+            Value::Color(Color::Named(name)) => name == color_str,
+            Value::Color(Color::Hex(hex)) => hex == color_str,
+            _ => false
+        }
+    }
+
+    fn color_is(&self, color_type: &str, value: &str) -> bool {
+        match (color_type, &self.value) {
+            ("named", Value::Color(Color::Named(name))) => name == value,
+            ("hex", Value::Color(Color::Hex(hex))) => hex == value,
+            _ => false
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Declaration {
     pub property: String,
@@ -389,6 +539,37 @@ impl fmt::Display for Declaration {
         }
     }
 }
+
+pub trait RuleExt {
+    fn declaration_count(&self) -> usize;
+    fn has_declaration(&self, property: &str) -> bool;
+    fn get_declaration(&self, property: &str) -> Option<&Declaration>;
+    fn get_declarations(&self, property: &str) -> Vec<&Declaration>;
+    fn get_declaration_value(&self, property: &str) -> Option<&Value>;
+}
+
+impl RuleExt for Rule {
+    fn declaration_count(&self) -> usize {
+        self.declarations.len()
+    }
+
+    fn has_declaration(&self, property: &str) -> bool {
+        self.declarations.iter().any(|decl| decl.property == property)
+    }
+
+    fn get_declaration(&self, property: &str) -> Option<&Declaration> {
+        self.declarations.iter().find(|decl| decl.property == property)
+    }
+    
+    fn get_declarations(&self, property: &str) -> Vec<&Declaration> {
+        self.declarations.iter().filter(|decl| decl.property == property).collect()
+    }
+    
+    fn get_declaration_value(&self, property: &str) -> Option<&Value> {
+        self.get_declaration(property).map(|decl| &decl.value)
+    }
+}
+
 
 #[derive(Debug)]
 pub struct Rule {
@@ -410,6 +591,23 @@ impl fmt::Display for Rule {
             writeln!(f, "    {}", decl)?;
         }
         writeln!(f, "}}")
+    }
+}
+
+pub trait StylesheetExt {
+    fn get_rule_by_selector(&self, selector: &str) -> Option<&Rule>;
+    fn has_selector(&self, selector: &str) -> bool;
+}
+
+impl StylesheetExt for Stylesheet {
+    fn get_rule_by_selector(&self, selector: &str) -> Option<&Rule> {
+        self.rules.iter().find(|rule| {
+            rule.selectors.iter().any(|s| s.to_string() == selector)
+        })
+    }
+
+    fn has_selector(&self, selector: &str) -> bool {
+        self.get_rule_by_selector(selector).is_some()
     }
 }
 
