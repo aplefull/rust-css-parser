@@ -600,56 +600,83 @@ impl Lexer {
             }
         }
     }
-
-    fn read_url_content(&mut self) -> String {
+    
+    fn read_escape(&mut self) -> Option<char> {
+        // Skip the backslash
         self.read_char();
 
-        let start_position = self.position;
-        let mut paren_depth = 1;
-        let mut in_quotes = false;
-        let mut quote_char = ' ';
+        if self.ch.is_none() {
+            return None;
+        }
+
+        let ch = self.ch.unwrap();
+
+        // Handle hex escapes like \20 (for space)
+        if ch.is_digit(16) {
+            let start_position = self.position;
+
+            // Read up to 6 hex digits
+            let mut count = 0;
+            while self.ch.is_some() && self.ch.unwrap().is_digit(16) && count < 6 {
+                self.read_char();
+                count += 1;
+            }
+
+            // Optional whitespace after hex digits
+            if self.ch == Some(' ') {
+                self.read_char();
+            }
+
+            let hex_str = &self.input[start_position..self.position - if self.ch == Some(' ') { 1 } else { 0 }];
+
+            // Convert hex to character
+            match u32::from_str_radix(hex_str, 16) {
+                Ok(code) => {
+                    match std::char::from_u32(code) {
+                        Some(c) => return Some(c),
+                        None => return None
+                    }
+                },
+                Err(_) => return None
+            }
+        } else {
+            // Simple character escape like \:
+            let escaped_char = ch;
+            self.read_char();
+            return Some(escaped_char);
+        }
+    }
+
+    fn read_identifier(&mut self) -> String {
+        let mut result = String::new();
+
+        if self.ch.is_some() {
+            if self.ch == Some('\\') {
+                if let Some(escaped_char) = self.read_escape() {
+                    result.push(escaped_char);
+                }
+            } else {
+                result.push(self.ch.unwrap());
+                self.read_char();
+            }
+        }
 
         while self.ch.is_some() {
             let ch = self.ch.unwrap();
 
-            if !in_quotes {
-                if ch == '(' {
-                    paren_depth += 1;
-                } else if ch == ')' {
-                    paren_depth -= 1;
-                    if paren_depth == 0 {
-                        break;
-                    }
-                } else if ch == '"' || ch == '\'' {
-                    in_quotes = true;
-                    quote_char = ch;
+            if ch == '\\' {
+                if let Some(escaped_char) = self.read_escape() {
+                    result.push(escaped_char);
                 }
-            } else if ch == quote_char && self.peek_char() != Some('\\') {
-                in_quotes = false;
+            } else if self.is_identifier_part(ch) {
+                result.push(ch);
+                self.read_char();
+            } else {
+                break;
             }
-
-            self.read_char();
         }
 
-        let url_content = self.input[start_position..self.position].to_string();
-
-        self.read_char();
-
-        url_content
-    }
-
-    fn read_identifier(&mut self) -> String {
-        let start_position = self.position;
-
-        if self.ch.is_some() {
-            self.read_char();
-        }
-
-        while self.ch.is_some() && self.is_identifier_part(self.ch.unwrap()) {
-            self.read_char();
-        }
-
-        self.input[start_position..self.position].to_string()
+        result
     }
 
     fn read_number(&mut self) -> (f64, usize) {
@@ -692,16 +719,6 @@ impl Lexer {
         self.input[start_position..self.position].to_string()
     }
 
-    fn read_hex_color(&mut self) -> String {
-        let start_position = self.position;
-
-        while self.ch.is_some() && self.is_hex_digit(self.ch.unwrap()) {
-            self.read_char();
-        }
-
-        self.input[start_position..self.position].to_string()
-    }
-
     fn read_string(&mut self, quote_char: char) -> String {
         let start_position = self.position;
         let mut escaped = false;
@@ -724,11 +741,11 @@ impl Lexer {
     }
 
     fn is_identifier_start(&self, ch: char) -> bool {
-        ch.is_alphabetic() || ch == '_' || ch == '-'
+        ch.is_alphabetic() || ch == '_' || ch == '-' || ch == '\\'
     }
 
     fn is_identifier_part(&self, ch: char) -> bool {
-        ch.is_alphanumeric() || ch == '_' || ch == '-'
+        ch.is_alphanumeric() || ch == '_' || ch == '-' || ch == '\\'
     }
 
     fn is_hex_digit(&self, ch: char) -> bool {
