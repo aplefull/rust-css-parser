@@ -376,5 +376,8 @@ mod tests {
         // TODO .size2{font-size: rgba(0 0 0 / 0.5%);}
         // TODO --tw-ring-inset: var(--tw-empty, /*!*/ /*!*/);
         // TODO box-shadow:rgba(217,217,217,0.2) 0px 0px 5px,rgba(217,217,217,0.25) 0px 1px 4px 1px
+        // TODO     background-image: -webkit-linear-gradient(top, rgba(0, 0, 0, .75) 0, transparent 100%);
+        //     background-image: -webkit-gradient(linear, left top, left bottom, color-stop(0, rgba(0, 0, 0, .75)), to(transparent));
+        //     background-image: linear-gradient(to bottom, rgba(0, 0, 0, .75) 0, transparent 100%);
     }
 }

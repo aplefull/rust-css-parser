@@ -169,14 +169,14 @@ impl CssParser {
     }
 
     fn parse_at_rule(&mut self) -> Result<AtRule, String> {
-        self.next_token(); // Consume the @ symbol
+        self.next_token();
 
         let rule_type = if let Some(token) = self.next_token() {
             match &token.token_type {
                 TokenType::Identifier(name) => {
                     match name.to_lowercase().as_str() {
                         "media" => AtRuleType::Media,
-                        "keyframes" | "webkit-keyframes" | "moz-keyframes" | "o-keyframes" | "ms-keyframes" => AtRuleType::Keyframes,
+                        "keyframes" | "-webkit-keyframes" | "webkit-keyframes" | "moz-keyframes" | "o-keyframes" | "ms-keyframes" => AtRuleType::Keyframes,
                         "import" => AtRuleType::Import,
                         "font-face" => AtRuleType::FontFace,
                         "supports" => AtRuleType::Supports,
@@ -266,7 +266,7 @@ impl CssParser {
 
         Ok(AtRule { rule_type, query, rules })
     }
-    
+
     fn parse_selector(&mut self) -> Result<Selector, String> {
         let mut groups = Vec::new();
         let mut combinators = Vec::new();
@@ -745,20 +745,32 @@ impl CssParser {
             return Ok(Value::Function(name, vec![Value::Literal(url_value)]));
         }
 
+        let name_lower = name.to_lowercase();
+
+        let is_gradient =
+            name_lower.ends_with("-gradient") ||
+                name_lower == "-webkit-gradient" ||
+                ["gradient", "linear", "radial", "conic"].iter()
+                    .any(|term| name_lower.contains(term) &&
+                        ["-webkit-", "-moz-", "-ms-", "-o-"].iter()
+                            .any(|prefix| name_lower.starts_with(prefix)));
+
+        if is_gradient {
+            return self.parse_gradient_function(name);
+        }
+
         if name.to_lowercase() == "calc" {
             return self.parse_calc_function();
+        }
+
+        let math_functions = ["min", "max", "clamp"];
+        if math_functions.contains(&name.to_lowercase().as_str()) {
+            return self.parse_css_math_function(name);
         }
 
         let space_separated_functions = ["drop-shadow", "box-shadow", "translate", "rotate", "scale"];
         if space_separated_functions.contains(&name.to_lowercase().as_str()) {
             return self.parse_space_separated_function(name);
-        }
-
-        let math_functions = ["min", "max", "clamp"];
-        if math_functions.contains(&name.to_lowercase().as_str()) {
-            let expression = self.parse_calc_expression()?;
-            self.expect_close_paren()?;
-            return Ok(Value::Calc(CalcExpression::Function(name, vec![expression])));
         }
 
         let color_functions = [
@@ -799,6 +811,140 @@ impl CssParser {
         }
 
         Ok(Value::Function(name, arguments))
+    }
+
+    fn parse_gradient_function(&mut self, name: String) -> Result<Value, String> {
+        let mut arguments = Vec::new();
+
+        if let Some(token) = self.peek_token() {
+            if let TokenType::Identifier(id) = &token.token_type {
+                if id.to_lowercase() == "to" {
+                    self.next_token();
+
+                    let mut direction = String::from("to");
+
+                    while let Some(token) = self.peek_token().cloned() {
+                        match &token.token_type {
+                            TokenType::Identifier(dir) => {
+                                if ["top", "right", "bottom", "left"].contains(&dir.to_lowercase().as_str()) {
+                                    self.next_token();
+                                    direction.push_str(&format!(" {}", dir));
+                                } else {
+                                    break;
+                                }
+                            },
+                            TokenType::Comma => {
+                                break;
+                            },
+                            _ => break,
+                        }
+                    }
+
+                    arguments.push(Value::Literal(direction));
+
+                    if let Some(token) = self.peek_token() {
+                        if matches!(token.token_type, TokenType::Comma) {
+                            self.next_token();
+                        }
+                    }
+                }
+            }
+        }
+
+        loop {
+            if let Some(token) = self.peek_token() {
+                if matches!(token.token_type, TokenType::Comma) {
+                    self.next_token();
+                    continue;
+                }
+            }
+
+            if let Some(token) = self.peek_token() {
+                if matches!(token.token_type, TokenType::CloseParen) {
+                    self.next_token();
+                    break;
+                }
+            } else {
+                return Err("Unexpected end of input in gradient function".to_string());
+            }
+
+            let color_stop = self.parse_gradient_color_stop()?;
+            arguments.push(color_stop);
+        }
+
+        Ok(Value::Function(name, arguments))
+    }
+
+    fn parse_gradient_color_stop(&mut self) -> Result<Value, String> {
+        let mut items = Vec::new();
+
+        loop {
+            if let Some(token) = self.peek_token() {
+                match &token.token_type {
+                    TokenType::Comma | TokenType::CloseParen => {
+                        break;
+                    },
+                    _ => {
+                        match self.parse_value() {
+                            Ok(value) => {
+                                items.push(value);
+                            },
+                            Err(_) => {
+                                self.next_token();
+                            }
+                        }
+                    }
+                }
+            } else {
+                break;
+            }
+        }
+
+        if items.is_empty() {
+            return Err("Expected at least one value in gradient color stop".to_string());
+        }
+
+        if items.len() == 1 {
+            return Ok(items.remove(0));
+        }
+
+        Ok(Value::List(items, ListSeparator::Space))
+    }
+
+    fn parse_css_math_function(&mut self, name: String) -> Result<Value, String> {
+        let mut arguments = Vec::new();
+
+        loop {
+            let expr = self.parse_calc_expression()?;
+            arguments.push(expr);
+
+            if let Some(token) = self.peek_token() {
+                match &token.token_type {
+                    TokenType::Comma => {
+                        self.next_token();
+                        continue;
+                    },
+                    TokenType::CloseParen => {
+                        self.next_token();
+                        break;
+                    },
+                    _ => return Err(format!("Expected comma or closing parenthesis in math function, found {:?}", token.token_type)),
+                }
+            } else {
+                return Err("Unexpected end of input in math function".to_string());
+            }
+        }
+
+        if arguments.is_empty() {
+            return Err(format!("Function {} requires at least one argument", name));
+        }
+
+        // For clamp, ensure we have exactly 3 arguments
+        if name.to_lowercase() == "clamp" && arguments.len() != 3 {
+            return Err("clamp() function requires exactly 3 arguments: minimum, preferred, and maximum".to_string());
+        }
+
+        Ok(Value::Calc(CalcExpression::Function(name, arguments)))
     }
 
     fn parse_space_separated_function(&mut self, name: String) -> Result<Value, String> {
