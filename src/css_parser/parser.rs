@@ -997,53 +997,15 @@ impl CssParser {
     }
 
     fn parse_url_argument(&mut self) -> Result<String, String> {
-        if let Some(token) = self.peek_token().cloned() {
-            if let TokenType::String(text) = &token.token_type {
-                self.next_token();
-                return Ok(text.clone());
-            }
-        }
-
-        let mut url = String::new();
-
-        while let Some(token) = self.peek_token() {
-            if matches!(token.token_type, TokenType::CloseParen) {
-                break;
-            }
-
-            let token = self.next_token().unwrap();
-            match &token.token_type {
-                TokenType::Identifier(text) => url.push_str(text),
-                TokenType::Number(num) => url.push_str(&num.to_string()),
-                TokenType::String(text) => url.push_str(text),
-                TokenType::Colon => url.push(':'),
-                TokenType::Slash => url.push('/'),
-                TokenType::Semicolon => url.push(';'),
-                TokenType::Comma => url.push(','),
-                TokenType::Plus => url.push('+'),
-                TokenType::Minus => url.push('-'),
-                TokenType::Dot => url.push('.'),
-                TokenType::Equals => url.push('='),
-                TokenType::Hash => url.push('#'),
-                TokenType::Asterisk => url.push('*'),
-                TokenType::Backslash => url.push('\\'),
-                TokenType::Tilde => url.push('~'),
-                TokenType::Dollar => url.push('$'),
-                TokenType::Caret => url.push('^'),
-                TokenType::Pipe => url.push('|'),
-                TokenType::ExclamationMark => url.push('!'),
-                TokenType::AtSymbol => url.push('@'),
-                TokenType::GreaterThan => url.push('>'),
-                TokenType::OpenBracket => url.push('['),
-                TokenType::CloseBracket => url.push(']'),
-                TokenType::Unit(unit) => url.push_str(unit),
-                _ => {
-                    url.push_str(&format!("{}", token.token_type));
+        match self.next_token() {
+            Some(token) => {
+                match token.token_type {
+                    TokenType::String(text) => Ok(text),
+                    _ => Err(format!("Expected string in url(), found {:?}", token.token_type))
                 }
-            }
+            },
+            None => Err("Unexpected end of input while parsing url()".to_string())
         }
-
-        Ok(url)
     }
 
     fn parse_calc_function(&mut self) -> Result<Value, String> {

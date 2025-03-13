@@ -379,5 +379,12 @@ mod tests {
         // TODO     background-image: -webkit-linear-gradient(top, rgba(0, 0, 0, .75) 0, transparent 100%);
         //     background-image: -webkit-gradient(linear, left top, left bottom, color-stop(0, rgba(0, 0, 0, .75)), to(transparent));
         //     background-image: linear-gradient(to bottom, rgba(0, 0, 0, .75) 0, transparent 100%);
+        // TODO src: url(https://fonts.gstatic.com/s/robotomono/v23/L0xuDF4xlVMF-BfR8bXMIhJHg45mwgGEFl0_3vq_SeW4Ep0.woff2) format('woff2');
+        //     // base64
+        //     src: url(data:application/font-woff2;base64,d09GMgABAAAAA);
+        //     // base64 svg
+        //     background: url(data:image/svg+xml;base64,PD94b++Cg==);
+        //      test: url("_/next/index.css");
+        
     }
 }

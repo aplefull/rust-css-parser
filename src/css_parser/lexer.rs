@@ -113,7 +113,7 @@ pub struct Lexer {
     ch: Option<char>,
     line: usize,
     column: usize,
-    next_token_cache: Option<Token>,
+    next_token_cache: Vec<Token>,
 }
 
 impl Lexer {
@@ -125,7 +125,7 @@ impl Lexer {
             ch: None,
             line: 1,
             column: 0,
-            next_token_cache: None,
+            next_token_cache: Vec::new(),
         };
         lexer.read_char();
         lexer
@@ -167,8 +167,8 @@ impl Lexer {
     }
 
     pub fn next_token(&mut self) -> Token {
-        if let Some(token) = self.next_token_cache.take() {
-            return token;
+        if !self.next_token_cache.is_empty() {
+            return self.next_token_cache.remove(0);
         }
 
         self.skip_whitespace();
@@ -178,6 +178,25 @@ impl Lexer {
         }
 
         let ch = self.ch.unwrap();
+
+        if (ch.is_alphabetic() || ch == '_' || ch == '-') &&
+            (ch == 'u' || ch == 'U') &&
+            self.position + 3 <= self.input.len() &&
+            self.input[self.position..self.position+3].to_lowercase() == "url" {
+            
+            let peek_pos = self.position + 3;
+            let mut peek_index = peek_pos;
+
+            while peek_index < self.input.len() &&
+                self.input[peek_index..].chars().next().unwrap().is_whitespace() {
+                peek_index += 1;
+            }
+            
+            if peek_index < self.input.len() &&
+                self.input[peek_index..].chars().next().unwrap() == '(' {
+                return self.handle_url_function();
+            }
+        }
 
         match ch {
             '{' => {
@@ -287,10 +306,10 @@ impl Lexer {
                             let unit_start_col = self.column;
                             let unit = self.read_unit();
 
-                            self.next_token_cache = Some(Token::new(TokenType::Unit(unit.clone()),
-                                                                    self.line,
-                                                                    unit_start_col,
-                                                                    unit.len()));
+                            self.next_token_cache.push(Token::new(TokenType::Unit(unit.clone()),
+                                                                  self.line,
+                                                                  unit_start_col,
+                                                                  unit.len()));
 
                             return Token::new(TokenType::Number(number), self.line, start_col, length);
                         }
@@ -323,7 +342,7 @@ impl Lexer {
                         let unit_start_col = self.column;
                         let unit = self.read_unit();
 
-                        self.next_token_cache = Some(Token::new(TokenType::Unit(unit.clone()), self.line, unit_start_col, unit.len()));
+                        self.next_token_cache.push(Token::new(TokenType::Unit(unit.clone()), self.line, unit_start_col, unit.len()));
 
                         return Token::new(TokenType::Number(number), self.line, start_col, length);
                     }
@@ -368,7 +387,7 @@ impl Lexer {
                     let hex_value = self.input[hex_start_position..self.position].to_string();
                     let hex_length = hex_value.len();
 
-                    self.next_token_cache = Some(Token::new(
+                    self.next_token_cache.push(Token::new(
                         TokenType::Identifier(hex_value),
                         self.line,
                         hex_start_col,
@@ -405,7 +424,7 @@ impl Lexer {
                     let unit_start_col = self.column;
                     let unit = self.read_unit();
 
-                    self.next_token_cache = Some(Token::new(TokenType::Unit(unit.clone()), self.line, unit_start_col, unit.len()));
+                    self.next_token_cache.push(Token::new(TokenType::Unit(unit.clone()), self.line, unit_start_col, unit.len()));
 
                     return Token::new(TokenType::Number(number), self.line, start_col, length);
                 }
@@ -424,6 +443,84 @@ impl Lexer {
         }
     }
 
+    fn handle_url_function(&mut self) -> Token {
+        let start_line = self.line;
+        let start_column = self.column;
+
+        let url_identifier = self.read_identifier();
+        assert_eq!(url_identifier, "url");
+
+        self.skip_whitespace();
+        
+        if self.ch != Some('(') {
+            return Token::new(TokenType::Identifier(url_identifier.clone()),
+                              start_line, start_column, url_identifier.len());
+        }
+
+        self.read_char();
+
+        self.skip_whitespace();
+
+        let url_content_start = self.position;
+        let mut paren_depth = 1;
+        let mut in_quotes = false;
+        let mut quote_char = ' ';
+
+        while self.ch.is_some() {
+            let ch = self.ch.unwrap();
+
+            if !in_quotes {
+                if ch == '(' {
+                    paren_depth += 1;
+                } else if ch == ')' {
+                    paren_depth -= 1;
+                    if paren_depth == 0 {
+                        break;
+                    }
+                } else if ch == '"' || ch == '\'' {
+                    in_quotes = true;
+                    quote_char = ch;
+                }
+            } else if ch == quote_char && self.peek_char() != Some('\\') {
+                in_quotes = false;
+            }
+
+            self.read_char();
+        }
+
+        let url_content = self.input[url_content_start..self.position].to_string();
+        
+        if self.ch == Some(')') {
+            self.read_char();
+        }
+
+        self.next_token_cache.push(Token::new(
+            TokenType::OpenParen,
+            start_line, start_column + url_identifier.len(),
+            1
+        ));
+
+        if !url_content.is_empty() {
+            self.next_token_cache.push(Token::new(
+                TokenType::String(url_content.clone()),
+                start_line, start_column + url_identifier.len() + 1,
+                url_content.len()
+            ));
+        }
+
+        self.next_token_cache.push(Token::new(
+            TokenType::CloseParen,
+            self.line, self.column - 1,
+            1
+        ));
+
+        Token::new(
+            TokenType::Identifier(url_identifier.clone()),
+            start_line, start_column,
+            url_identifier.len()
+        )
+    }
+    
     fn skip_whitespace(&mut self) {
         while self.ch.is_some() {
             let ch = self.ch.unwrap();
@@ -461,6 +558,43 @@ impl Lexer {
                 break;
             }
         }
+    }
+
+    fn read_url_content(&mut self) -> String {
+        self.read_char();
+
+        let start_position = self.position;
+        let mut paren_depth = 1;
+        let mut in_quotes = false;
+        let mut quote_char = ' ';
+
+        while self.ch.is_some() {
+            let ch = self.ch.unwrap();
+
+            if !in_quotes {
+                if ch == '(' {
+                    paren_depth += 1;
+                } else if ch == ')' {
+                    paren_depth -= 1;
+                    if paren_depth == 0 {
+                        break;
+                    }
+                } else if ch == '"' || ch == '\'' {
+                    in_quotes = true;
+                    quote_char = ch;
+                }
+            } else if ch == quote_char && self.peek_char() != Some('\\') {
+                in_quotes = false;
+            }
+
+            self.read_char();
+        }
+
+        let url_content = self.input[start_position..self.position].to_string();
+
+        self.read_char();
+
+        url_content
     }
 
     fn read_identifier(&mut self) -> String {
