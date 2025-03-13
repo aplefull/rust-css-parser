@@ -123,13 +123,20 @@ impl fmt::Display for Selector {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum AtRuleType {
     Media,
     Keyframes,
     Import,
     FontFace,
     Supports,
+    Charset,
+    Namespace,
+    Page,
+    CounterStyle,
+    Property,
+    Layer,
+    FontFeatureValues,
     Unknown(String),
 }
 
@@ -148,14 +155,28 @@ impl fmt::Display for AtRule {
             AtRuleType::Import => write!(f, "@import ")?,
             AtRuleType::FontFace => write!(f, "@font-face ")?,
             AtRuleType::Supports => write!(f, "@supports ")?,
+            AtRuleType::Charset => write!(f, "@charset ")?,
+            AtRuleType::Namespace => write!(f, "@namespace ")?,
+            AtRuleType::Page => write!(f, "@page ")?,
+            AtRuleType::CounterStyle => write!(f, "@counter-style ")?,
+            AtRuleType::Property => write!(f, "@property ")?,
+            AtRuleType::Layer => write!(f, "@layer ")?,
+            AtRuleType::FontFeatureValues => write!(f, "@font-feature-values ")?,
             AtRuleType::Unknown(ref name) => write!(f, "@{} ", name)?,
         }
 
-        writeln!(f, "{} {{", self.query)?;
-        for rule in &self.rules {
-            write!(f, "    {}", rule)?;
+        match self.rule_type {
+            AtRuleType::Charset | AtRuleType::Import | AtRuleType::Namespace => {
+                writeln!(f, "{};", self.query)
+            },
+            _ => {
+                writeln!(f, "{} {{", self.query)?;
+                for rule in &self.rules {
+                    write!(f, "    {}", rule)?;
+                }
+                writeln!(f, "}}")
+            }
         }
-        writeln!(f, "}}")
     }
 }
 

@@ -169,24 +169,25 @@ impl CssParser {
     }
 
     fn parse_at_rule(&mut self) -> Result<AtRule, String> {
-        self.next_token();
+        self.next_token(); // Consume the @ symbol
 
         let rule_type = if let Some(token) = self.next_token() {
             match &token.token_type {
                 TokenType::Identifier(name) => {
-                    let name_lower = name.to_lowercase();
-                    if name_lower == "media" {
-                        AtRuleType::Media
-                    } else if name_lower == "keyframes" || name_lower.ends_with("-keyframes") {
-                        AtRuleType::Keyframes
-                    } else if name_lower == "import" {
-                        AtRuleType::Import
-                    } else if name_lower == "font-face" {
-                        AtRuleType::FontFace
-                    } else if name_lower == "supports" {
-                        AtRuleType::Supports
-                    } else {
-                        AtRuleType::Unknown(name.clone())
+                    match name.to_lowercase().as_str() {
+                        "media" => AtRuleType::Media,
+                        "keyframes" | "webkit-keyframes" | "moz-keyframes" | "o-keyframes" | "ms-keyframes" => AtRuleType::Keyframes,
+                        "import" => AtRuleType::Import,
+                        "font-face" => AtRuleType::FontFace,
+                        "supports" => AtRuleType::Supports,
+                        "charset" => AtRuleType::Charset,
+                        "namespace" => AtRuleType::Namespace,
+                        "page" => AtRuleType::Page,
+                        "counter-style" => AtRuleType::CounterStyle,
+                        "property" => AtRuleType::Property,
+                        "layer" => AtRuleType::Layer,
+                        "font-feature-values" => AtRuleType::FontFeatureValues,
+                        _ => AtRuleType::Unknown(name.clone()),
                     }
                 },
                 _ => return Err(format!("Expected identifier after @, found {:?}", token.token_type)),
@@ -195,13 +196,47 @@ impl CssParser {
             return Err("Unexpected end of input after @".to_string());
         };
 
+        let simple_at_rules = [
+            AtRuleType::Charset,
+            AtRuleType::Import,
+            AtRuleType::Namespace,
+        ];
+
+        if simple_at_rules.contains(&rule_type) {
+            let mut query = String::new();
+
+            while let Some(token) = self.peek_token() {
+                match &token.token_type {
+                    TokenType::Semicolon => {
+                        self.next_token();
+                        break;
+                    },
+                    _ => {
+                        let token = self.next_token().unwrap();
+                        match &token.token_type {
+                            TokenType::String(text) => query.push_str(&format!("\"{}\"", text)),
+                            TokenType::Identifier(name) => query.push_str(name),
+                            _ => query.push_str(&format!("{} ", token.token_type)),
+                        }
+                    }
+                }
+            }
+
+            return Ok(AtRule { rule_type, query: query.trim().to_string(), rules: Vec::new() });
+        }
+
         let mut query = String::new();
+
         while let Some(token) = self.peek_token() {
             match &token.token_type {
                 TokenType::OpenBrace => break,
                 _ => {
                     let token = self.next_token().unwrap();
-                    query.push_str(&format!("{} ", token.token_type));
+                    match &token.token_type {
+                        TokenType::String(text) => query.push_str(&format!("\"{}\"", text)),
+                        TokenType::Identifier(name) => query.push_str(name),
+                        _ => query.push_str(&format!("{} ", token.token_type)),
+                    }
                 }
             }
         }
@@ -209,18 +244,6 @@ impl CssParser {
         query = query.trim().to_string();
 
         self.expect_open_brace()?;
-
-        if matches!(rule_type, AtRuleType::Import) {
-            while let Some(token) = self.peek_token() {
-                if matches!(token.token_type, TokenType::Semicolon) {
-                    self.next_token();
-                    break;
-                } else {
-                    self.next_token();
-                }
-            }
-            return Ok(AtRule { rule_type, query, rules: Vec::new() });
-        }
 
         let mut rules = Vec::new();
 
@@ -243,7 +266,7 @@ impl CssParser {
 
         Ok(AtRule { rule_type, query, rules })
     }
-
+    
     fn parse_selector(&mut self) -> Result<Selector, String> {
         let mut groups = Vec::new();
         let mut combinators = Vec::new();
@@ -799,7 +822,7 @@ impl CssParser {
 
         Ok(Value::Function(name, vec![combined_args]))
     }
-    
+
     fn parse_url_argument(&mut self) -> Result<String, String> {
         if let Some(token) = self.peek_token().cloned() {
             if let TokenType::String(text) = &token.token_type {
@@ -849,7 +872,7 @@ impl CssParser {
 
         Ok(url)
     }
-    
+
     fn parse_calc_function(&mut self) -> Result<Value, String> {
         let expression = self.parse_calc_expression()?;
 
