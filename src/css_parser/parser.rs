@@ -171,29 +171,50 @@ impl CssParser {
     fn parse_at_rule(&mut self) -> Result<AtRule, String> {
         self.next_token();
 
-        let rule_type = if let Some(token) = self.next_token() {
+        let rule_name = if let Some(token) = self.next_token() {
             match &token.token_type {
-                TokenType::Identifier(name) => {
-                    match name.to_lowercase().as_str() {
-                        "media" => AtRuleType::Media,
-                        "keyframes" | "-webkit-keyframes" | "webkit-keyframes" | "moz-keyframes" | "o-keyframes" | "ms-keyframes" => AtRuleType::Keyframes,
-                        "import" => AtRuleType::Import,
-                        "font-face" => AtRuleType::FontFace,
-                        "supports" => AtRuleType::Supports,
-                        "charset" => AtRuleType::Charset,
-                        "namespace" => AtRuleType::Namespace,
-                        "page" => AtRuleType::Page,
-                        "counter-style" => AtRuleType::CounterStyle,
-                        "property" => AtRuleType::Property,
-                        "layer" => AtRuleType::Layer,
-                        "font-feature-values" => AtRuleType::FontFeatureValues,
-                        _ => AtRuleType::Unknown(name.clone()),
-                    }
-                },
+                TokenType::Identifier(name) => name.clone(),
                 _ => return Err(format!("Expected identifier after @, found {:?}", token.token_type)),
             }
         } else {
             return Err("Unexpected end of input after @".to_string());
+        };
+
+        let rule_type = if rule_name.eq_ignore_ascii_case("media") {
+            AtRuleType::Media
+        } else if rule_name.eq_ignore_ascii_case("keyframes")
+            || rule_name.starts_with("-webkit-keyframes")
+            || rule_name.starts_with("-moz-keyframes")
+            || rule_name.starts_with("-o-keyframes")
+            || rule_name.starts_with("-ms-keyframes") {
+            AtRuleType::Keyframes
+        } else if rule_name.eq_ignore_ascii_case("import") {
+            AtRuleType::Import
+        } else if rule_name.eq_ignore_ascii_case("font-face") {
+            AtRuleType::FontFace
+        } else if rule_name.eq_ignore_ascii_case("supports") {
+            AtRuleType::Supports
+        } else if rule_name.eq_ignore_ascii_case("charset") {
+            AtRuleType::Charset
+        } else if rule_name.eq_ignore_ascii_case("namespace") {
+            AtRuleType::Namespace
+        } else if rule_name.eq_ignore_ascii_case("page") {
+            AtRuleType::Page
+        } else if rule_name.eq_ignore_ascii_case("counter-style") {
+            AtRuleType::CounterStyle
+        } else if rule_name.eq_ignore_ascii_case("property") {
+            AtRuleType::Property
+        } else if rule_name.eq_ignore_ascii_case("layer") {
+            AtRuleType::Layer
+        } else if rule_name.eq_ignore_ascii_case("font-feature-values") {
+            AtRuleType::FontFeatureValues
+        } else if rule_name.eq_ignore_ascii_case("viewport")
+            || rule_name.eq_ignore_ascii_case("-ms-viewport")
+            || rule_name.eq_ignore_ascii_case("-webkit-viewport")
+            || rule_name.eq_ignore_ascii_case("-moz-viewport") {
+            AtRuleType::Viewport
+        } else {
+            AtRuleType::Unknown(rule_name.clone())
         };
 
         let simple_at_rules = [
@@ -222,7 +243,7 @@ impl CssParser {
                 }
             }
 
-            return Ok(AtRule { rule_type, query: query.trim().to_string(), rules: Vec::new() });
+            return Ok(AtRule { rule_type, name: rule_name, query: query.trim().to_string(), rules: Vec::new(), at_rules: Vec::new() });
         }
 
         let mut query = String::new();
@@ -246,9 +267,10 @@ impl CssParser {
         self.expect_open_brace()?;
 
         let mut rules = Vec::new();
+        let mut nested_at_rules = Vec::new();
 
         match rule_type {
-            AtRuleType::FontFace | AtRuleType::Page | AtRuleType::Property => {
+            AtRuleType::FontFace | AtRuleType::Page | AtRuleType::Property | AtRuleType::Viewport => {
                 let declarations = self.parse_declarations()?;
 
                 let rule = Rule {
@@ -277,13 +299,20 @@ impl CssParser {
             },
 
             _ => {
+                // For other at-rules like @media, @supports, etc.
                 while let Some(token) = self.peek_token() {
                     match &token.token_type {
                         TokenType::CloseBrace => {
                             self.next_token();
                             break;
                         },
+                        TokenType::AtSymbol => {
+                            // Parse nested at-rule
+                            let nested_at_rule = self.parse_at_rule()?;
+                            nested_at_rules.push(nested_at_rule);
+                        },
                         _ => {
+                            // Parse regular CSS rule
                             let rule = self.parse_rule()?;
                             rules.push(rule);
                         }
@@ -292,7 +321,15 @@ impl CssParser {
             }
         }
 
-        Ok(AtRule { rule_type, query, rules })
+        let at_rule = AtRule {
+            rule_type,
+            name: rule_name,
+            query,
+            rules,
+            at_rules: nested_at_rules,
+        };
+
+        Ok(at_rule)
     }
 
     fn parse_selector(&mut self) -> Result<Selector, String> {
@@ -800,13 +837,13 @@ impl CssParser {
             return self.parse_css_math_function(name);
         }
 
-        let space_separated_functions = ["drop-shadow", "box-shadow", "translate", "rotate", "scale"];
+        let space_separated_functions = ["drop-shadow", "box-shadow", "translate", "rotate", "scale", "rect", "translate", "scale", "rotate", "matrix", "perspective"];
         if space_separated_functions.contains(&name.to_lowercase().as_str()) {
             return self.parse_space_separated_function(name);
         }
 
         let color_functions = [
-            "rgb", "rgba", "hsl", "hsla", "hwb", "lab", "lch", "color"
+            "rgb", "rgba", "hsl", "hsla", "hwb", "lab", "lch", "oklab", "oklch", "color", "device-cmyk"
         ];
 
         if color_functions.contains(&name.as_str()) {

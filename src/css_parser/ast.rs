@@ -137,44 +137,49 @@ pub enum AtRuleType {
     Property,
     Layer,
     FontFeatureValues,
+    Viewport,
     Unknown(String),
 }
 
 #[derive(Debug)]
 pub struct AtRule {
     pub rule_type: AtRuleType,
+    pub name: String,
     pub query: String,
     pub rules: Vec<Rule>,
+    pub at_rules: Vec<AtRule>,
 }
 
 impl fmt::Display for AtRule {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.rule_type {
-            AtRuleType::Media => write!(f, "@media ")?,
-            AtRuleType::Keyframes => write!(f, "@keyframes ")?,
-            AtRuleType::Import => write!(f, "@import ")?,
-            AtRuleType::FontFace => write!(f, "@font-face ")?,
-            AtRuleType::Supports => write!(f, "@supports ")?,
-            AtRuleType::Charset => write!(f, "@charset ")?,
-            AtRuleType::Namespace => write!(f, "@namespace ")?,
-            AtRuleType::Page => write!(f, "@page ")?,
-            AtRuleType::CounterStyle => write!(f, "@counter-style ")?,
-            AtRuleType::Property => write!(f, "@property ")?,
-            AtRuleType::Layer => write!(f, "@layer ")?,
-            AtRuleType::FontFeatureValues => write!(f, "@font-feature-values ")?,
-            AtRuleType::Unknown(ref name) => write!(f, "@{} ", name)?,
+        write!(f, "@{}", self.name)?;
+
+        if !self.query.is_empty() {
+            write!(f, " {}", self.query)?;
         }
 
         match self.rule_type {
             AtRuleType::Charset | AtRuleType::Import | AtRuleType::Namespace => {
-                writeln!(f, "{};", self.query)
+                writeln!(f, ";")
             },
             _ => {
-                writeln!(f, "{} {{", self.query)?;
-                for rule in &self.rules {
-                    write!(f, "    {}", rule)?;
+                writeln!(f, " {{")?;
+
+                for at_rule in &self.at_rules {
+                    let at_rule_str = format!("{}", at_rule);
+                    for line in at_rule_str.lines() {
+                        writeln!(f, "    {}", line)?;
+                    }
                 }
-                writeln!(f, "}}")
+
+                for rule in &self.rules {
+                    let rule_str = format!("{}", rule);
+                    for line in rule_str.lines() {
+                        writeln!(f, "    {}", line)?;
+                    }
+                }
+
+                write!(f, "}}")
             }
         }
     }
