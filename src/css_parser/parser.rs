@@ -247,19 +247,47 @@ impl CssParser {
 
         let mut rules = Vec::new();
 
-        while let Some(token) = self.peek_token() {
-            match &token.token_type {
-                TokenType::CloseBrace => {
-                    self.next_token();
-                    break;
-                },
-                _ => {
-                    let rule = if matches!(rule_type, AtRuleType::Keyframes) {
-                        self.parse_keyframe_rule()?
-                    } else {
-                        self.parse_rule()?
-                    };
-                    rules.push(rule);
+        match rule_type {
+            AtRuleType::FontFace | AtRuleType::Page | AtRuleType::Property => {
+                let declarations = self.parse_declarations()?;
+
+                let rule = Rule {
+                    selectors: vec![Selector { groups: vec![], combinators: vec![] }],
+                    declarations,
+                };
+
+                rules.push(rule);
+
+                self.expect_close_brace()?;
+            },
+
+            AtRuleType::Keyframes => {
+                while let Some(token) = self.peek_token() {
+                    match &token.token_type {
+                        TokenType::CloseBrace => {
+                            self.next_token();
+                            break;
+                        },
+                        _ => {
+                            let rule = self.parse_keyframe_rule()?;
+                            rules.push(rule);
+                        }
+                    }
+                }
+            },
+
+            _ => {
+                while let Some(token) = self.peek_token() {
+                    match &token.token_type {
+                        TokenType::CloseBrace => {
+                            self.next_token();
+                            break;
+                        },
+                        _ => {
+                            let rule = self.parse_rule()?;
+                            rules.push(rule);
+                        }
+                    }
                 }
             }
         }
@@ -379,7 +407,6 @@ impl CssParser {
                         None => Err("Unexpected end of input after colon".to_string()),
                     }
                 },
-
                 TokenType::DoubleColon => {
                     self.next_token();
                     match self.next_token() {

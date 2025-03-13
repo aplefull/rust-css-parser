@@ -12,14 +12,14 @@ fn main() {
             let mut parser = CssParser::new(css.clone());
             let mut lexer = Lexer::new(css);
 
-            /*loop {
+            loop {
                 let token = lexer.next_token();
                 println!("{:?}", token);
 
                 if token.token_type == TokenType::EOF {
                     break;
                 }
-            }*/
+            }
 
             match parser.parse_stylesheet() {
                 Ok(stylesheet) => {
