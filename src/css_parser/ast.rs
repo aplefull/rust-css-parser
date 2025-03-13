@@ -217,7 +217,7 @@ pub enum Color {
 impl fmt::Display for Color {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Color::Hex(hex) => write!(f, "#{}", hex),
+            Color::Hex(hex) => write!(f, "{}", hex),
             Color::Rgb(r, g, b) => write!(f, "rgb({}, {}, {})", r, g, b),
             Color::Rgba(r, g, b, a) => write!(f, "rgba({}, {}, {}, {})", r, g, b, a),
             Color::Hsl(h, s, l) => write!(f, "hsl({}, {}%, {}%)", h, s, l),

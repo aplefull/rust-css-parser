@@ -726,6 +726,11 @@ impl CssParser {
             return self.parse_calc_function();
         }
 
+        let space_separated_functions = ["drop-shadow", "box-shadow", "translate", "rotate", "scale"];
+        if space_separated_functions.contains(&name.to_lowercase().as_str()) {
+            return self.parse_space_separated_function(name);
+        }
+
         let math_functions = ["min", "max", "clamp"];
         if math_functions.contains(&name.to_lowercase().as_str()) {
             let expression = self.parse_calc_expression()?;
@@ -773,6 +778,28 @@ impl CssParser {
         Ok(Value::Function(name, arguments))
     }
 
+    fn parse_space_separated_function(&mut self, name: String) -> Result<Value, String> {
+        let mut values = Vec::new();
+
+        while let Some(token) = self.peek_token() {
+            if matches!(token.token_type, TokenType::CloseParen) {
+                self.next_token();
+                break;
+            }
+
+            let value = self.parse_value()?;
+            values.push(value);
+        }
+
+        if values.is_empty() {
+            return Err("Expected at least one value in function".to_string());
+        }
+
+        let combined_args = Value::List(values, ListSeparator::Space);
+
+        Ok(Value::Function(name, vec![combined_args]))
+    }
+    
     fn parse_url_argument(&mut self) -> Result<String, String> {
         if let Some(token) = self.peek_token().cloned() {
             if let TokenType::String(text) = &token.token_type {
