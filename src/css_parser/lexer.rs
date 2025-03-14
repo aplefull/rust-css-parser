@@ -19,6 +19,7 @@ pub enum TokenType {
     ExclamationMark, // !
     Backslash,       // \
     Whitespace,      // Significant whitespace
+    LessThan,        // <
 
     // Math operators
     Plus,            // +
@@ -75,6 +76,7 @@ impl fmt::Display for TokenType {
             TokenType::Backslash => write!(f, "\\"),
             TokenType::Whitespace => write!(f, "Whitespace"),
             TokenType::GreaterThan => write!(f, ">"),
+            TokenType::LessThan => write!(f, "<"),
             TokenType::Tilde => write!(f, "~"),
             TokenType::Equals => write!(f, "="),
             TokenType::Caret => write!(f, "^"),
@@ -280,6 +282,11 @@ impl Lexer {
             },
             '>' => {
                 let token = Token::new(TokenType::GreaterThan, self.line, self.column, 1);
+                self.read_char();
+                token
+            },
+            '<' => {
+                let token = Token::new(TokenType::LessThan, self.line, self.column, 1);
                 self.read_char();
                 token
             },

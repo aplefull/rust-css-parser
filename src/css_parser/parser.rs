@@ -708,6 +708,49 @@ impl CssParser {
                     self.next_token();
                     Ok(Value::Literal(range_clone))
                 },
+                TokenType::Asterisk => {
+                    self.next_token();
+
+                    if let Some(next) = self.peek_token() {
+                        if let TokenType::Identifier(name) = &next.token_type {
+                            let name_clone = name.clone();
+                            self.next_token();
+
+                            if let Some(next) = self.peek_token() {
+                                if matches!(next.token_type, TokenType::OpenParen) {
+                                    return self.parse_function(format!("*{}", name_clone));
+                                }
+                            }
+                            return Ok(Value::Literal(format!("*{}", name_clone)));
+                        }
+                    }
+
+                    Ok(Value::Literal("*".to_string()))
+                },
+                TokenType::LessThan => {
+                    self.next_token();
+
+                    let mut content = String::from("<");
+
+                    while let Some(token) = self.peek_token() {
+                        match &token.token_type {
+                            TokenType::GreaterThan => {
+                                content.push('>');
+                                self.next_token();
+                                break;
+                            },
+                            TokenType::Semicolon | TokenType::CloseBrace => {
+                                break;
+                            },
+                            _ => {
+                                content.push_str(&format!(" {}", token.token_type));
+                                self.next_token();
+                            }
+                        }
+                    }
+
+                    Ok(Value::Literal(content))
+                },
                 _ => {
                     let token = self.next_token().unwrap();
                     Ok(Value::Literal(format!("{}", token.token_type)))
@@ -965,6 +1008,37 @@ impl CssParser {
             }
         }
 
+        if let Some(token) = self.peek_token() {
+            if matches!(token.token_type, TokenType::LessThan) {
+                let mut content = String::new();
+
+                let mut paren_depth = 1;
+
+                while paren_depth > 0 && self.peek_token().is_some() {
+                    let token = self.next_token().unwrap();
+                    match token.token_type {
+                        TokenType::OpenParen => {
+                            paren_depth += 1;
+                            content.push('(');
+                        },
+                        TokenType::CloseParen => {
+                            paren_depth -= 1;
+                            if paren_depth > 0 {
+                                content.push(')');
+                            }
+                        },
+                        TokenType::LessThan => content.push('<'),
+                        TokenType::GreaterThan => content.push('>'),
+                        TokenType::Identifier(text) => content.push_str(&text),
+                        TokenType::Whitespace => content.push(' '),
+                        _ => content.push_str(&format!("{}", token.token_type))
+                    }
+                }
+
+                return Ok(Value::Function(name, vec![Value::Literal(content)]));
+            }
+        }
+
         loop {
             let arg = self.parse_function_argument()?;
             arguments.push(arg);
@@ -978,10 +1052,12 @@ impl CssParser {
                         self.next_token();
                         break;
                     },
-                    _ => return Err(format!("Expected comma or closing parenthesis, found {:?}", token.token_type)),
+                    _ => {
+                        self.next_token();
+                    }
                 }
             } else {
-                return Err("Unexpected end of input while parsing function arguments".to_string());
+                break;
             }
         }
 

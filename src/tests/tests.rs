@@ -38,11 +38,13 @@ mod tests {
         // TODO     background-image: -webkit-linear-gradient(top, rgba(0, 0, 0, .75) 0, transparent 100%);
         //     background-image: -webkit-gradient(linear, left top, left bottom, color-stop(0, rgba(0, 0, 0, .75)), to(transparent));
         //     background-image: linear-gradient(to bottom, rgba(0, 0, 0, .75) 0, transparent 100%);
-        // TODO 
+        // TODO
         // TODO .prose :where(ol[type=I s]):not(:where([class~=not-prose] *)) {
         //     list-style-type: upper-roman
         //          }
         // TODO     box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow) !important
-        // TODO 
+        // TODO --tw-skew-x: skewX(< value >);
+        //     --tw-skew-y: skewY(< value >);
+        //     test: alpha(opacity=50);
     }
 }
