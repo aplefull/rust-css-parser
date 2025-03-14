@@ -1,5 +1,6 @@
 use super::common::parse_test_file;
 use crate::css_parser::ast::{DeclarationExt, RuleExt, StylesheetExt, ValueExt};
+use pretty_assertions::assert_eq;
 
 #[test]
 fn test_basic_selectors() {

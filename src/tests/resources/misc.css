@@ -4,3 +4,21 @@
     src: url(data:image/svg+xml;base64,PD94b++Cg==);
     src: url("/_next/static/media/KaTeX_AMS-Regular.a79f1c31.woff2");
 }
+
+.one\:two {}
+
+.\!one {}
+
+.\[\] {}
+
+#\[\:\] {}
+
+.foo\2c\.bar {}
+
+.a\2c.b {}
+
+.c\2c .d {}
+
+.e\2c  .f {}
+
+.shadow-\[0_4px_24px_0_hsl\(var\(--always-black\)\/1\.57\%\)\2c 0_4px_32px_0_hsl\(var\(--always-black\)\/1\.57\%\)\2c 0_2px_64px_0_hsl\(var\(--always-black\)\/1\.18\%\)\2c 0_16px_32px_0_hsl\(var\(--always-black\)\/1\.18\%\)\] {}

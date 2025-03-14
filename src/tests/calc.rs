@@ -1,5 +1,6 @@
 use crate::css_parser::ast::StylesheetExt;
 use crate::tests::common::parse_test_file;
+use pretty_assertions::assert_eq;
 
 #[test]
 fn test_calc() {

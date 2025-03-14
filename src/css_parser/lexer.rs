@@ -396,48 +396,16 @@ impl Lexer {
             },
             '\\' => {
                 let start_col = self.column;
-                self.read_char();
 
-                if self.ch.is_none() {
-                    return Token::new(TokenType::Backslash, self.line, start_col, 1);
+                let identifier = self.read_identifier();
+
+                if !identifier.is_empty() {
+                    return Token::new(TokenType::Identifier(identifier.clone()),
+                                      self.line, start_col, identifier.len());
                 }
 
-                match self.ch.unwrap() {
-                    '[' => {
-                        let token = Token::new(TokenType::Identifier("\\[".to_string()),
-                                               self.line, start_col, 2);
-                        self.read_char();
-                        token
-                    },
-                    ']' => {
-                        let token = Token::new(TokenType::Identifier("\\]".to_string()),
-                                               self.line, start_col, 2);
-                        self.read_char();
-                        token
-                    },
-                    '!' => {
-                        let token = Token::new(TokenType::Identifier("\\!".to_string()),
-                                               self.line, start_col, 2);
-                        self.read_char();
-                        token
-                    },
-                    '.' => {
-                        let token = Token::new(TokenType::Identifier("\\.".to_string()),
-                                               self.line, start_col, 2);
-                        self.read_char();
-                        token
-                    },
-                    ':' => {
-                        let token = Token::new(TokenType::Identifier("\\:".to_string()),
-                                               self.line, start_col, 2);
-                        self.read_char();
-                        token
-                    },
-                    _ => {
-                        Token::new(TokenType::Backslash, self.line, start_col, 1)
-                    }
-                }
-            },
+                Token::new(TokenType::Backslash, self.line, start_col, 1)
+            }
             '#' => {
                 let hash_token = Token::new(TokenType::Hash, self.line, self.column, 1);
                 self.read_char();
@@ -710,9 +678,16 @@ impl Lexer {
 
         if self.ch.is_some() {
             if self.ch == Some('\\') {
-                if let Some(escaped_char) = self.read_escape() {
-                    result.push(escaped_char);
+                self.read_char();
+
+                if self.ch.is_none() {
+                    return result;
                 }
+
+                let escaped_char = self.ch.unwrap();
+                self.read_char();
+                
+                result.push(escaped_char);
             } else {
                 result.push(self.ch.unwrap());
                 self.read_char();

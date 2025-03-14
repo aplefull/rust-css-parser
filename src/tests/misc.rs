@@ -2,6 +2,7 @@ use super::common::{compare_values, parse_test_file};
 use crate::css_parser::ast::ListSeparator::Space;
 use crate::css_parser::ast::Value::List;
 use crate::css_parser::ast::{RuleExt, StylesheetExt, Value};
+use pretty_assertions::assert_eq;
 
 #[test]
 fn test_url() {
@@ -60,4 +61,39 @@ fn test_url() {
             )]
         )
     ));
+}
+
+#[test]
+fn test_escapes() {
+    let stylesheet = parse_test_file("misc.css").unwrap();
+
+    let rule = stylesheet.get_rule_by_selector(".one:two").unwrap();
+    assert_eq!(rule.selectors[0].groups[0].parts[0].to_string(), ".one:two");
+
+    let rule = stylesheet.get_rule_by_selector(".!one").unwrap();
+    assert_eq!(rule.selectors[0].groups[0].parts[0].to_string(), ".!one");
+
+    let rule = stylesheet.get_rule_by_selector(".[]").unwrap();
+    assert_eq!(rule.selectors[0].groups[0].parts[0].to_string(), ".[]");
+
+    let rule = stylesheet.get_rule_by_selector("#[:]").unwrap();
+    assert_eq!(rule.selectors[0].groups[0].parts[0].to_string(), "#[:]");
+
+    let rule = stylesheet.get_rule_by_selector(".foo,.bar").unwrap();
+    assert_eq!(rule.selectors[0].groups[0].parts[0].to_string(), ".foo,.bar");
+
+    // TODO
+    /*let rule = stylesheet.get_rule_by_selector(".a, .b").unwrap();
+    assert_eq!(rule.selectors[0].groups[0].parts[0].to_string(), ".a, .b");*/
+    //panic!("test");
+
+    /*let rule = stylesheet.get_rule_by_selector(".c,.d").unwrap();
+    assert_eq!(rule.selectors[0].groups[0].parts[0].to_string(), ".c,.d");*/
+
+    let rule = stylesheet.get_rule_by_selector(".e, .f").unwrap();
+    assert_eq!(rule.selectors[0].groups[0].parts[0].to_string(), ".e,");
+    assert_eq!(rule.selectors[0].groups[1].parts[0].to_string(), ".f");
+
+    /*let rule = stylesheet.get_rule_by_selector(".shadow-[0_4px_24px_0_hsl(var(--always-black)/1.57%),0_4px_32px_0_hsl(var(--always-black)/1.57%),0_2px_64px_0_hsl(var(--always-black)/1.18%),0_16px_32px_0_hsl(var(--always-black)/1.18%)]");
+    assert_eq!(rule.unwrap().selectors[0].groups[0].parts[0].to_string(), ".shadow-[0_4px_24px_0_hsl(var(--always-black)/1.57%),0_4px_32px_0_hsl(var(--always-black)/1.57%),0_2px_64px_0_hsl(var(--always-black)/1.18%),0_16px_32px_0_hsl(var(--always-black)/1.18%)]");*/
 }

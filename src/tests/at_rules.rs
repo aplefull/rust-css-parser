@@ -1,5 +1,6 @@
 use super::common::{compare_values, parse_test_file};
 use crate::css_parser::ast::{AtRuleType, Unit, Value, ValueExt};
+use pretty_assertions::assert_eq;
 
 #[test]
 fn test_at_rules() {
