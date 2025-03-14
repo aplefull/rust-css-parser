@@ -110,6 +110,7 @@ impl Token {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub enum LexerMode {
     Normal,     // Skip whitespace (default)
     Selector,   // Return whitespace tokens (for parsing selectors)
@@ -209,7 +210,7 @@ impl Lexer {
             (ch == 'u' || ch == 'U') &&
             self.position + 3 <= self.input.len() &&
             self.input[self.position..self.position+3].to_lowercase() == "url" {
-            
+
             let peek_pos = self.position + 3;
             let mut peek_index = peek_pos;
 
@@ -217,7 +218,7 @@ impl Lexer {
                 self.input[peek_index..].chars().next().unwrap().is_whitespace() {
                 peek_index += 1;
             }
-            
+
             if peek_index < self.input.len() &&
                 self.input[peek_index..].chars().next().unwrap() == '(' {
                 return self.handle_url_function();
@@ -394,9 +395,48 @@ impl Lexer {
                 }
             },
             '\\' => {
-                let token = Token::new(TokenType::Backslash, self.line, self.column, 1);
+                let start_col = self.column;
                 self.read_char();
-                token
+
+                if self.ch.is_none() {
+                    return Token::new(TokenType::Backslash, self.line, start_col, 1);
+                }
+
+                match self.ch.unwrap() {
+                    '[' => {
+                        let token = Token::new(TokenType::Identifier("\\[".to_string()),
+                                               self.line, start_col, 2);
+                        self.read_char();
+                        token
+                    },
+                    ']' => {
+                        let token = Token::new(TokenType::Identifier("\\]".to_string()),
+                                               self.line, start_col, 2);
+                        self.read_char();
+                        token
+                    },
+                    '!' => {
+                        let token = Token::new(TokenType::Identifier("\\!".to_string()),
+                                               self.line, start_col, 2);
+                        self.read_char();
+                        token
+                    },
+                    '.' => {
+                        let token = Token::new(TokenType::Identifier("\\.".to_string()),
+                                               self.line, start_col, 2);
+                        self.read_char();
+                        token
+                    },
+                    ':' => {
+                        let token = Token::new(TokenType::Identifier("\\:".to_string()),
+                                               self.line, start_col, 2);
+                        self.read_char();
+                        token
+                    },
+                    _ => {
+                        Token::new(TokenType::Backslash, self.line, start_col, 1)
+                    }
+                }
             },
             '#' => {
                 let hash_token = Token::new(TokenType::Hash, self.line, self.column, 1);
@@ -487,7 +527,7 @@ impl Lexer {
         assert_eq!(url_identifier, "url");
 
         self.skip_whitespace();
-        
+
         if self.ch != Some('(') {
             return Token::new(TokenType::Identifier(url_identifier.clone()),
                               start_line, start_column, url_identifier.len());
@@ -525,7 +565,7 @@ impl Lexer {
         }
 
         let url_content = self.input[url_content_start..self.position].to_string();
-        
+
         if self.ch == Some(')') {
             self.read_char();
         }
@@ -585,7 +625,7 @@ impl Lexer {
         Token::new(TokenType::UnicodeRange(unicode_range.clone()),
                    start_line, start_column, unicode_range.len())
     }
-    
+
     fn skip_whitespace(&mut self) {
         while self.ch.is_some() {
             let ch = self.ch.unwrap();
@@ -624,7 +664,7 @@ impl Lexer {
             }
         }
     }
-    
+
     fn read_escape(&mut self) -> Option<char> {
         // Skip the backslash
         self.read_char();
@@ -635,25 +675,21 @@ impl Lexer {
 
         let ch = self.ch.unwrap();
 
-        // Handle hex escapes like \20 (for space)
         if ch.is_digit(16) {
             let start_position = self.position;
 
-            // Read up to 6 hex digits
             let mut count = 0;
             while self.ch.is_some() && self.ch.unwrap().is_digit(16) && count < 6 {
                 self.read_char();
                 count += 1;
             }
 
-            // Optional whitespace after hex digits
             if self.ch == Some(' ') {
                 self.read_char();
             }
 
             let hex_str = &self.input[start_position..self.position - if self.ch == Some(' ') { 1 } else { 0 }];
 
-            // Convert hex to character
             match u32::from_str_radix(hex_str, 16) {
                 Ok(code) => {
                     match std::char::from_u32(code) {
@@ -664,7 +700,6 @@ impl Lexer {
                 Err(_) => return None
             }
         } else {
-            // Simple character escape like \:
             let escaped_char = ch;
             self.read_char();
             return Some(escaped_char);
@@ -764,12 +799,18 @@ impl Lexer {
         self.input[start_position..self.position].to_string()
     }
 
-    fn is_identifier_start(&self, ch: char) -> bool {
-        ch.is_alphabetic() || ch == '_' || ch == '-' || ch == '\\'
+    fn is_identifier_part(&self, ch: char) -> bool {
+        ch.is_alphanumeric() || ch == '_' || ch == '-' || ch == '\\' ||
+            ch == '!' || ch == '#' || ch == '@' || ch == '$' || ch == '%' ||
+            ch == '&' || ch == '*' || ch == '~' || ch == '.' ||
+            ch > '\u{7F}'
     }
 
-    fn is_identifier_part(&self, ch: char) -> bool {
-        ch.is_alphanumeric() || ch == '_' || ch == '-' || ch == '\\'
+    fn is_identifier_start(&self, ch: char) -> bool {
+        ch.is_alphabetic() || ch == '_' || ch == '-' || ch == '\\' ||
+            ch == '!' || ch == '#' || ch == '@' || ch == '$' || ch == '%' ||
+            ch == '&' || ch == '*' || ch == '~' ||
+            ch > '\u{7F}'
     }
 
     fn is_hex_digit(&self, ch: char) -> bool {

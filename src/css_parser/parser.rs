@@ -148,12 +148,21 @@ impl CssParser {
             *mode = LexerMode::Selector;
         }
 
+        self.skip_whitespace_tokens();
+
         let first_selector = self.parse_selector()?;
         let mut selectors = vec![first_selector];
 
         while let Some(token) = self.peek_token() {
+            if matches!(token.token_type, TokenType::Whitespace) {
+                self.next_token();
+                continue;
+            }
+
             if matches!(token.token_type, TokenType::Comma) {
                 self.next_token();
+
+                self.skip_whitespace_tokens();
 
                 let next_selector = self.parse_selector()?;
                 selectors.push(next_selector);
@@ -174,6 +183,16 @@ impl CssParser {
             selectors,
             declarations,
         })
+    }
+
+    fn skip_whitespace_tokens(&mut self) {
+        while let Some(token) = self.peek_token() {
+            if matches!(token.token_type, TokenType::Whitespace) {
+                self.next_token();
+            } else {
+                break;
+            }
+        }
     }
 
     fn parse_at_rule(&mut self) -> Result<AtRule, String> {
@@ -420,16 +439,25 @@ impl CssParser {
 
     fn parse_selector_group(&mut self) -> Result<SelectorGroup, String> {
         let mut parts = Vec::new();
+        let mut found_part = false;
 
         while let Some(token) = self.peek_token() {
             match &token.token_type {
                 TokenType::OpenBrace | TokenType::GreaterThan | TokenType::Plus |
-                TokenType::Tilde | TokenType::Whitespace | TokenType::Comma => break,
+                TokenType::Tilde | TokenType::Comma => break,
+                TokenType::Whitespace => {
+                    if found_part {
+                        break;
+                    } else {
+                        self.next_token();
+                    }
+                },
                 TokenType::Identifier(_) | TokenType::Dot | TokenType::Hash |
                 TokenType::Colon | TokenType::DoubleColon | TokenType::Asterisk |
                 TokenType::OpenBracket => {
                     let part = self.parse_selector_part(true)?;
                     parts.push(part);
+                    found_part = true;
                 },
                 _ => break,
             }
@@ -447,6 +475,36 @@ impl CssParser {
             match &token.token_type {
                 TokenType::Dot => {
                     self.next_token();
+
+                    if let Some(next_token) = self.peek_token() {
+                        if matches!(next_token.token_type, TokenType::Backslash) {
+                            self.next_token();
+
+                            if let Some(escaped_token) = self.next_token() {
+                                match &escaped_token.token_type {
+                                    TokenType::Identifier(name) => {
+                                        return Ok(SelectorPart::Class(format!("\\{}", name)));
+                                    },
+                                    TokenType::ExclamationMark => {
+                                        if let Some(after_exclamation) = self.next_token() {
+                                            if let TokenType::Identifier(name) = after_exclamation.token_type {
+                                                return Ok(SelectorPart::Class(format!("\\!{}", name)));
+                                            } else {
+                                                return Ok(SelectorPart::Class("\\!".to_string()));
+                                            }
+                                        } else {
+                                            return Ok(SelectorPart::Class("\\!".to_string()));
+                                        }
+                                    },
+                                    _ => {
+                                        let char_repr = format!("{}", escaped_token.token_type);
+                                        return Ok(SelectorPart::Class(format!("\\{}", char_repr)));
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     match self.next_token() {
                         Some(token) => {
                             if let TokenType::Identifier(name) = token.token_type {
@@ -1657,14 +1715,41 @@ impl CssParser {
             if matches!(token.token_type, TokenType::Comma) {
                 self.next_token();
 
-                if let Some(next_token) = self.peek_token() {
-                    if matches!(next_token.token_type, TokenType::CloseParen) {
-                        Some(Box::new(Value::Literal("".to_string())))
+                let mut paren_depth = 1;
+                let mut fallback_values = Vec::new();
+
+                while paren_depth > 0 {
+                    if let Some(token) = self.peek_token() {
+                        match &token.token_type {
+                            TokenType::OpenParen => {
+                                paren_depth += 1;
+                                let value = self.parse_value()?;
+                                fallback_values.push(value);
+                            },
+                            TokenType::CloseParen => {
+                                paren_depth -= 1;
+                                if paren_depth == 0 {
+                                    break;
+                                } else {
+                                    self.next_token();
+                                }
+                            },
+                            _ => {
+                                let value = self.parse_value()?;
+                                fallback_values.push(value);
+                            }
+                        }
                     } else {
-                        Some(Box::new(self.parse_function_argument()?))
+                        return Err("Unexpected end of input while parsing var function fallback".to_string());
                     }
+                }
+
+                if fallback_values.len() > 1 {
+                    Some(Box::new(Value::List(fallback_values, ListSeparator::Space)))
+                } else if fallback_values.len() == 1 {
+                    Some(Box::new(fallback_values.remove(0)))
                 } else {
-                    return Err("Unexpected end of input after comma in var function".to_string());
+                    Some(Box::new(Value::Literal("".to_string())))
                 }
             } else {
                 None
