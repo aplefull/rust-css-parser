@@ -666,7 +666,6 @@ impl Lexer {
     }
 
     fn read_escape(&mut self) -> Option<char> {
-        // Skip the backslash
         self.read_char();
 
         if self.ch.is_none() {

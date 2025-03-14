@@ -303,9 +303,6 @@ impl fmt::Display for CalcExpression {
 
 pub trait ValueExt {
     fn is(&self, value: &str) -> bool;
-    fn is_value(&self, value: &Value) -> bool;
-    fn is_function(&self, name: &str, arguments: Vec<Value>) -> bool;
-    fn is_variable(&self, name: &str, fallback: Option<Box<Value>>) -> bool;
 }
 
 impl ValueExt for Value {
@@ -332,97 +329,6 @@ impl ValueExt for Value {
             }
             v => {
                 panic!("Value::is() called on unsupported value type: {:?}", v);
-            }
-        }
-    }
-
-    fn is_value(&self, value: &Value) -> bool {
-        match self {
-            Value::Keyword(keyword) => {
-                if let Value::Keyword(other_keyword) = value {
-                    keyword == other_keyword
-                } else {
-                    false
-                }
-            },
-            Value::Literal(text) => {
-                if let Value::Literal(other_text) = value {
-                    text == other_text
-                } else {
-                    false
-                }
-            },
-            Value::QuotedString(text) => {
-                if let Value::QuotedString(other_text) = value {
-                    text == other_text
-                } else {
-                    false
-                }
-            },
-            Value::Color(color) => {
-                if let Value::Color(other_color) = value {
-                    color == other_color
-                } else {
-                    false
-                }
-            },
-            Value::Number(num, unit) => {
-                if let Value::Number(other_num, other_unit) = value {
-                    num == other_num && unit == other_unit
-                } else {
-                    false
-                }
-            },
-            v => {
-                panic!("Value::is_value() called on unsupported value type: {:?}", v);
-            }
-        }
-    }
-
-    fn is_function(&self, name: &str, arguments: Vec<Value>) -> bool {
-        match self {
-            Value::Function(func_name, func_args) => {
-                if func_name != name {
-                    return false;
-                }
-
-                if func_args.len() != arguments.len() {
-                    return false;
-                }
-
-                for (i, arg) in func_args.iter().enumerate() {
-                    if !arg.is_value(&arguments[i]) {
-                        return false;
-                    }
-                }
-
-                true
-            },
-            v => {
-                panic!("Value::is_function() called on unsupported value type: {:?}", v);
-            }
-        }
-    }
-
-    fn is_variable(&self, name: &str, fallback: Option<Box<Value>>) -> bool {
-        match self {
-            Value::VarFunction(var_name, var_fallback) => {
-                if var_name != name {
-                    return false;
-                }
-
-                if let Some(fallback) = fallback {
-                    if let Some(var_fallback) = var_fallback {
-                        fallback.is(var_fallback.to_string().as_str())
-                    } else {
-                        false
-                    }
-                } else {
-                    var_fallback.is_none()
-                }
-            },
-            v => {
-                panic!("Value::is_variable() called on unsupported value type: {:?}", v);
             }
         }
     }

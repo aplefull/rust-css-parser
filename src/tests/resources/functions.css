@@ -6,34 +6,32 @@
     color: hsl(0, 100%, 50%);
     color: hsla(0 100% 50% / 0.5);
     color: oklab(0 0.5 0.5);
+    color: rgba(var(--test) / calc(4 + 8));
+    color: oklab(40.1% 0.1143 0.045);
+    color: oklab(59.69% 0.1007 0.1191);
+    color: oklab(59.69% 0.1007 0.1191 / 0.5);
+    color: oklab(from green l a b / 0.5);
+    color: oklab(from #0000FF calc(l + 0.1) a b / calc(alpha * 0.9));
+    color: oklab(from hsl(180 100% 50%) calc(l - 0.1) a b);
+    color: rgba(0 0 0 / 0.5%);
 }
 
-.transforms {
-    transform: rotate(45deg);
-    transform: rotate(45deg) scale(2);
-    transform: rotate(45deg) scale(2) translate(10px, calc(10px));
+.color-mix {
+    color: color-mix(in hsl, hsl(200 50 80), coral 80%);
+    color: color-mix(in lch longer hue, hsl(200deg 50% 80%), coral);
+    color: color-mix(in srgb, plum, #f00);
+    color: color-mix(in lab, plum 60%, #f00 50%);
+    color: color-mix(in --swop5c, red, blue);
+}
+
+.palette-mix {
+    font-palette: palette-mix(in lch, normal, dark);
+    font-palette: palette-mix(in lch, --blues, --yellows);
+    font-palette: palette-mix(in lch, --blues 50%, --yellows 50%);
+    font-palette: palette-mix(in hsl shorter hue, --blues, --yellows);
 }
 
 .space-separated {
     filter: blur(5px) brightness(120%);
-}
-
-.calc {
-    width: calc(
-            min(100% - 2 * max(var(--sidebar-width, 300px), 20vw),
-            (100vw - 4rem) / 2) +
-            clamp(1rem,
-            (2vh + 1vw) * 0.5,
-            3rem) -
-            (var(--padding, 8px) * (1 + var(--scale-factor, 0.25)))
-    );
-
-    margin: calc(((10px + 2em) * 1.5) / (3vh - 1rem) + max(5%, 10px) - var(--margin, 2rem));
-
-    transform: translate(
-            calc(50% + min(var(--offset-x, 10px), 5vw) * (var(--direction, -1))),
-            calc(clamp(0px, var(--offset-y, 20px) / 2, 50px) - 10px)
-    );
-
-    grid-template-columns: calc(20% + 1fr * (2 / 3)) calc(1fr - 0.5 * var(--gap, 16px)) auto;
+    transform: rotate(45deg) scale(2) translate(10px, calc(10px));
 }

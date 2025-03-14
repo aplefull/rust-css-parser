@@ -1,1 +1,7 @@
 @import "style.css";
+
+@media screen and (max-width: 959px) {
+    @-ms-viewport {
+        width: 768px !important
+    }
+}

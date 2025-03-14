@@ -1,0 +1,16 @@
+.calc {
+    width: calc(
+            min(100% - 2 * max(var(--sidebar-width, 300px), 20vw),
+            (100vw - 4rem) / 2) +
+            clamp(1rem,
+            (2vh + 1vw) * 0.5,
+            3rem) -
+            (var(--padding, 8px) * (1 + var(--scale-factor, 0.25)))
+    );
+    height: calc(var(--height,));
+    margin: calc(calc(.28929605em + .2 / .00)) calc(((10px + 2em) * 1.5) / (3vh - 1rem) + max(5%, 10px) - var(--margin, 2rem));
+    transform: translate(
+            calc(50% + min(calc(20% + 1fr * (2 / 3)), 5vw) * (var(--direction, -1))),
+            calc(clamp(0px, var(--offset-y, calc(20px)) / 2, 50px) - 10px)
+    );
+}
