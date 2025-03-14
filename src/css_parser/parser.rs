@@ -144,6 +144,10 @@ impl CssParser {
     }
 
     fn parse_rule(&mut self) -> Result<Rule, String> {
+        if let Lexer { mode, .. } = &mut self.lexer {
+            *mode = LexerMode::Selector;
+        }
+
         let first_selector = self.parse_selector()?;
         let mut selectors = vec![first_selector];
 
@@ -156,6 +160,10 @@ impl CssParser {
             } else {
                 break;
             }
+        }
+
+        if let Lexer { mode, .. } = &mut self.lexer {
+            *mode = LexerMode::Normal;
         }
 
         self.expect_open_brace()?;
@@ -338,32 +346,72 @@ impl CssParser {
 
         while let Some(token) = self.peek_token() {
             match &token.token_type {
+                TokenType::Whitespace => {
+                    self.next_token();
+
+                    if let Some(next_token) = self.peek_token() {
+                        match &next_token.token_type {
+                            TokenType::Identifier(_) | TokenType::Dot | TokenType::Hash |
+                            TokenType::Colon | TokenType::DoubleColon | TokenType::Asterisk |
+                            TokenType::OpenBracket => {
+                                combinators.push(SelectorCombinator::Descendant);
+                                let next_group = self.parse_selector_group()?;
+                                groups.push(next_group);
+                            },
+                            _ => {}
+                        }
+                    }
+                },
                 TokenType::GreaterThan => {
                     self.next_token();
                     combinators.push(SelectorCombinator::Child);
+
+                    while let Some(token) = self.peek_token() {
+                        if matches!(token.token_type, TokenType::Whitespace) {
+                            self.next_token();
+                        } else {
+                            break;
+                        }
+                    }
+
                     let next_group = self.parse_selector_group()?;
                     groups.push(next_group);
                 },
                 TokenType::Plus => {
                     self.next_token();
                     combinators.push(SelectorCombinator::AdjacentSibling);
+
+                    while let Some(token) = self.peek_token() {
+                        if matches!(token.token_type, TokenType::Whitespace) {
+                            self.next_token();
+                        } else {
+                            break;
+                        }
+                    }
+
                     let next_group = self.parse_selector_group()?;
                     groups.push(next_group);
                 },
                 TokenType::Tilde => {
                     self.next_token();
                     combinators.push(SelectorCombinator::GeneralSibling);
+
+                    while let Some(token) = self.peek_token() {
+                        if matches!(token.token_type, TokenType::Whitespace) {
+                            self.next_token();
+                        } else {
+                            break;
+                        }
+                    }
+
                     let next_group = self.parse_selector_group()?;
                     groups.push(next_group);
                 },
-                TokenType::Identifier(_) | TokenType::Dot | TokenType::Hash |
-                TokenType::Colon | TokenType::DoubleColon | TokenType::Asterisk => {
-                    combinators.push(SelectorCombinator::Descendant);
+                TokenType::OpenBrace | TokenType::Comma => break,
+                _ => {
                     let next_group = self.parse_selector_group()?;
                     groups.push(next_group);
                 },
-                TokenType::OpenBrace => break,
-                _ => break,
             }
         }
 
@@ -375,9 +423,11 @@ impl CssParser {
 
         while let Some(token) = self.peek_token() {
             match &token.token_type {
-                TokenType::OpenBrace | TokenType::GreaterThan | TokenType::Plus | TokenType::Tilde => break,
+                TokenType::OpenBrace | TokenType::GreaterThan | TokenType::Plus |
+                TokenType::Tilde | TokenType::Whitespace | TokenType::Comma => break,
                 TokenType::Identifier(_) | TokenType::Dot | TokenType::Hash |
-                TokenType::Colon | TokenType::DoubleColon | TokenType::Asterisk | TokenType::OpenBracket => {
+                TokenType::Colon | TokenType::DoubleColon | TokenType::Asterisk |
+                TokenType::OpenBracket => {
                     let part = self.parse_selector_part(true)?;
                     parts.push(part);
                 },

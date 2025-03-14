@@ -18,6 +18,7 @@ pub enum TokenType {
     Asterisk,        // *
     ExclamationMark, // !
     Backslash,       // \
+    Whitespace,      // Significant whitespace
 
     // Math operators
     Plus,            // +
@@ -72,6 +73,7 @@ impl fmt::Display for TokenType {
             TokenType::Minus => write!(f, "-"),
             TokenType::Slash => write!(f, "/"),
             TokenType::Backslash => write!(f, "\\"),
+            TokenType::Whitespace => write!(f, "Whitespace"),
             TokenType::GreaterThan => write!(f, ">"),
             TokenType::Tilde => write!(f, "~"),
             TokenType::Equals => write!(f, "="),
@@ -108,6 +110,11 @@ impl Token {
     }
 }
 
+pub enum LexerMode {
+    Normal,     // Skip whitespace (default)
+    Selector,   // Return whitespace tokens (for parsing selectors)
+}
+
 pub struct Lexer {
     input: String,
     position: usize,
@@ -116,6 +123,7 @@ pub struct Lexer {
     line: usize,
     column: usize,
     next_token_cache: Vec<Token>,
+    pub mode: LexerMode,
 }
 
 impl Lexer {
@@ -128,6 +136,7 @@ impl Lexer {
             line: 1,
             column: 0,
             next_token_cache: Vec::new(),
+            mode: LexerMode::Normal,
         };
         lexer.read_char();
         lexer
@@ -173,7 +182,22 @@ impl Lexer {
             return self.next_token_cache.remove(0);
         }
 
-        self.skip_whitespace();
+        if matches!(self.mode, LexerMode::Selector) {
+            if self.ch.is_some() && self.ch.unwrap().is_whitespace() {
+                let start_line = self.line;
+                let start_column = self.column;
+
+                let start_pos = self.position;
+                while self.ch.is_some() && self.ch.unwrap().is_whitespace() {
+                    self.read_char();
+                }
+
+                let length = self.position - start_pos;
+                return Token::new(TokenType::Whitespace, start_line, start_column, length);
+            }
+        } else {
+            self.skip_whitespace();
+        }
 
         if self.ch.is_none() {
             return Token::new(TokenType::EOF, self.line, self.column, 0);

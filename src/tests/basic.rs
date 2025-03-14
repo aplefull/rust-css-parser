@@ -140,11 +140,9 @@ fn test_combined_selectors() {
     let value = rule.get_declaration_value("background-color").unwrap();
     assert!(value.is("#333333"));
 
-    // TODO
-    /*
     let rule = stylesheet.get_rule_by_selector("nav li").unwrap();
     let value = rule.get_declaration_value("list-style").unwrap();
-    assert!(value.is("none"));*/
+    assert!(value.is("none"));
 
     let rule = stylesheet.get_rule_by_selector("ul > li").unwrap();
     let value = rule.get_declaration_value("margin-bottom").unwrap();
@@ -158,9 +156,11 @@ fn test_combined_selectors() {
     let value = rule.get_declaration_value("color").unwrap();
     assert!(value.is("#666666"));
 
-    /*let rule = stylesheet.get_rule_by_selector("header nav > ul.menu li a").unwrap();
+    let rule = stylesheet
+        .get_rule_by_selector("header nav > ul.menu li a")
+        .unwrap();
     let value = rule.get_declaration_value("text-decoration").unwrap();
-    assert!(value.is("none"));*/
+    assert!(value.is("none"));
 
     let rule = stylesheet.get_rule_by_selector(".btn.btn-primary").unwrap();
     let value = rule.get_declaration_value("background-color").unwrap();
