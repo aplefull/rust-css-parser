@@ -408,25 +408,21 @@ impl fmt::Display for Value {
                     }
                 }
                 else {
-                    if args.len() <= 3 && args.len() >= 1 {
-                        match &args[0] {
-                            Value::List(items, ListSeparator::Space) => {
-                                let mut first = true;
-                                for item in items {
-                                    if !first {
-                                        write!(f, " ")?;
-                                    }
-                                    write!(f, "{}", item)?;
-                                    first = false;
-                                }
-                            },
-                            _ => write!(f, "{}", args[0])?,
+                    let space_separated_functions = ["drop-shadow", "box-shadow", "translate", "rotate", "scale",
+                        "rect", "translate", "scale", "rotate", "matrix", "perspective"];
+
+                    if space_separated_functions.contains(&name.to_lowercase().as_str()) {
+                        let mut first = true;
+                        for arg in args {
+                            if !first {
+                                write!(f, " ")?;
+                            }
+                            write!(f, "{}", arg)?;
+                            first = false;
                         }
-
-                        if args.len() >= 3 && args[1].to_string() == "/" {
-                            write!(f, " / ")?;
-
-                            match &args[2] {
+                    } else {
+                        if args.len() <= 3 && args.len() >= 1 {
+                            match &args[0] {
                                 Value::List(items, ListSeparator::Space) => {
                                     let mut first = true;
                                     for item in items {
@@ -437,17 +433,35 @@ impl fmt::Display for Value {
                                         first = false;
                                     }
                                 },
-                                _ => write!(f, "{}", args[2])?,
+                                _ => write!(f, "{}", args[0])?,
                             }
-                        }
-                    } else {
-                        let mut first = true;
-                        for arg in args {
-                            if !first {
-                                write!(f, ", ")?;
+
+                            if args.len() >= 3 && args[1].to_string() == "/" {
+                                write!(f, " / ")?;
+
+                                match &args[2] {
+                                    Value::List(items, ListSeparator::Space) => {
+                                        let mut first = true;
+                                        for item in items {
+                                            if !first {
+                                                write!(f, " ")?;
+                                            }
+                                            write!(f, "{}", item)?;
+                                            first = false;
+                                        }
+                                    },
+                                    _ => write!(f, "{}", args[2])?,
+                                }
                             }
-                            write!(f, "{}", arg)?;
-                            first = false;
+                        } else {
+                            let mut first = true;
+                            for arg in args {
+                                if !first {
+                                    write!(f, ", ")?;
+                                }
+                                write!(f, "{}", arg)?;
+                                first = false;
+                            }
                         }
                     }
                 }
