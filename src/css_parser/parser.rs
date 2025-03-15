@@ -1232,10 +1232,50 @@ impl CssParser {
     }
 
     fn parse_calc_function(&mut self) -> Result<Value, String> {
+        if let Some(token) = self.peek_token() {
+            if matches!(token.token_type, TokenType::LessThan) {
+                let mut content = String::from("calc(");
+                let mut paren_depth = 1;
+
+                self.next_token();
+                content.push('<');
+
+                while paren_depth > 0 && self.peek_token().is_some() {
+                    let token = self.next_token().unwrap();
+                    match token.token_type {
+                        TokenType::OpenParen => {
+                            paren_depth += 1;
+                            content.push('(');
+                        },
+                        TokenType::CloseParen => {
+                            paren_depth -= 1;
+                            if paren_depth > 0 {
+                                content.push(')');
+                            } else {
+                                content.push(')');
+                            }
+                        },
+                        TokenType::LessThan => content.push('<'),
+                        TokenType::GreaterThan => content.push('>'),
+                        TokenType::Plus => content.push('+'),
+                        TokenType::Minus => content.push('-'),
+                        TokenType::Asterisk => content.push('*'),
+                        TokenType::Slash => content.push('/'),
+                        TokenType::Identifier(text) => content.push_str(&text),
+                        TokenType::Number(num) => content.push_str(&num.to_string()),
+                        TokenType::Unit(unit) => content.push_str(&unit),
+                        TokenType::Whitespace => content.push(' '),
+                        TokenType::Comma => content.push(','),
+                        _ => content.push_str(&format!("{}", token.token_type))
+                    }
+                }
+
+                return Ok(Value::Literal(content));
+            }
+        }
+
         let expression = self.parse_calc_expression()?;
-
         self.expect_close_paren()?;
-
         Ok(Value::Calc(expression))
     }
 
@@ -1631,27 +1671,69 @@ impl CssParser {
             return Err("Unexpected end of input after color space".to_string());
         }
 
-        let first_color = self.parse_color_mix_argument()?;
+        // Parse the first color with potential space-separated components like alpha values
+        let mut first_color_components = Vec::new();
 
-        if let Some(token) = self.peek_token() {
-            if !matches!(token.token_type, TokenType::Comma) {
-                return Err(format!("Expected comma after first color, found {:?}", token.token_type));
+        // Parse until we hit a comma
+        let mut found_comma = false;
+        while let Some(token) = self.peek_token() {
+            match &token.token_type {
+                TokenType::Comma => {
+                    self.next_token(); // consume the comma
+                    found_comma = true;
+                    break;
+                },
+                TokenType::CloseParen => {
+                    // If we hit closing paren without a comma, that's an error
+                    return Err("Expected comma after first color in color-mix".to_string());
+                },
+                _ => {
+                    // Parse a value and add it to our components
+                    let component = self.parse_value()?;
+                    first_color_components.push(component);
+                }
             }
-            self.next_token();
-        } else {
-            return Err("Unexpected end of input after first color".to_string());
         }
 
-        let second_color = self.parse_color_mix_argument()?;
-
-        if let Some(token) = self.peek_token() {
-            if !matches!(token.token_type, TokenType::CloseParen) {
-                return Err(format!("Expected closing parenthesis, found {:?}", token.token_type));
-            }
-            self.next_token();
-        } else {
-            return Err("Unexpected end of input while parsing color-mix".to_string());
+        if !found_comma {
+            return Err("Expected comma after first color in color-mix".to_string());
         }
+
+        // Create the first color, which might be a list if it had multiple components
+        let first_color = if first_color_components.len() > 1 {
+            Value::List(first_color_components, ListSeparator::Space)
+        } else if first_color_components.len() == 1 {
+            first_color_components.remove(0)
+        } else {
+            return Err("Expected at least one value for first color".to_string());
+        };
+
+        // Parse the second color with potential space-separated components
+        let mut second_color_components = Vec::new();
+
+        // Parse until we hit a closing parenthesis
+        while let Some(token) = self.peek_token() {
+            match &token.token_type {
+                TokenType::CloseParen => {
+                    self.next_token(); // consume the closing paren
+                    break;
+                },
+                _ => {
+                    // Parse a value and add it to our components
+                    let component = self.parse_value()?;
+                    second_color_components.push(component);
+                }
+            }
+        }
+
+        // Create the second color, which might be a list if it had multiple components
+        let second_color = if second_color_components.len() > 1 {
+            Value::List(second_color_components, ListSeparator::Space)
+        } else if second_color_components.len() == 1 {
+            second_color_components.remove(0)
+        } else {
+            return Err("Expected at least one value for second color".to_string());
+        };
 
         let args = vec![
             color_space,
@@ -1661,49 +1743,7 @@ impl CssParser {
 
         Ok(Value::Function(function_name, args))
     }
-
-    fn parse_color_mix_argument(&mut self) -> Result<Value, String> {
-        let mut components = Vec::new();
-
-        if let Some(token) = self.peek_token() {
-            match &token.token_type {
-                TokenType::Identifier(name) if name.to_lowercase() == "color-mix" || name.to_lowercase() == "palette-mix" => {
-                    let name_clone = name.clone();
-                    self.next_token();
-
-                    if let Some(token) = self.peek_token() {
-                        if !matches!(token.token_type, TokenType::OpenParen) {
-                            return Err(format!("Expected opening parenthesis after {}, found {:?}", name_clone, token.token_type));
-                        }
-                        self.next_token();
-                    }
-
-                    let nested_function = self.parse_special_color_function(name_clone)?;
-                    components.push(nested_function);
-                },
-                _ => {
-                    let color = self.parse_value()?;
-                    components.push(color);
-                }
-            }
-        } else {
-            return Err("Unexpected end of input while parsing color mix argument".to_string());
-        }
-
-        if let Some(token) = self.peek_token() {
-            if let TokenType::Number(_) = token.token_type {
-                let percentage = self.parse_value()?;
-                components.push(percentage);
-            }
-        }
-
-        if components.len() > 1 {
-            Ok(Value::List(components, ListSeparator::Space))
-        } else {
-            Ok(components.remove(0))
-        }
-    }
-
+    
     fn parse_keyframe_rule(&mut self) -> Result<Rule, String> {
         let mut selectors = Vec::new();
         let first_selector = self.parse_keyframe_selector()?;
