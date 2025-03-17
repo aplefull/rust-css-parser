@@ -26,7 +26,7 @@ fn main() {
                     println!("Parsed CSS:");
                     println!("Regular rules: {}", stylesheet.rules.len());
                     for rule in &stylesheet.rules {
-                        println!("{}", rule);
+                        println!("{:?}", rule);
                     }
 
                     println!("At-rules: {}", stylesheet.at_rules.len());

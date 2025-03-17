@@ -497,7 +497,6 @@ fn test_space_separated_functions() {
                     vec![Number(120.0, Some(Unit::Percent))]
                 ),
             ],
-            Space
         )
     ));
 
@@ -518,7 +517,6 @@ fn test_space_separated_functions() {
                     ],
                 ),
             ],
-            Space
         )
     ));
 }

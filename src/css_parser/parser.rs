@@ -1839,7 +1839,7 @@ impl CssParser {
                 }
 
                 if fallback_values.len() > 1 {
-                    Some(Box::new(Value::List(fallback_values, ListSeparator::Space)))
+                    Some(Box::new(Value::List(fallback_values)))
                 } else if fallback_values.len() == 1 {
                     Some(Box::new(fallback_values.remove(0)))
                 } else {
@@ -1920,7 +1920,6 @@ impl CssParser {
         let first_value = self.parse_value()?;
 
         let mut values = vec![first_value];
-        let mut separator = None;
         let mut current_unquoted_string = String::new();
         let mut building_unquoted_font = false;
 
@@ -1948,11 +1947,9 @@ impl CssParser {
                             current_unquoted_string.clear();
                         }
 
-                        if separator.is_none() {
-                            separator = Some(ListSeparator::Comma);
-                        }
-
                         self.next_token();
+
+                        values.push(Value::Literal(",".to_string()));
 
                         let next_value = self.parse_value()?;
                         values.push(next_value);
@@ -1970,10 +1967,6 @@ impl CssParser {
                             current_unquoted_string.push_str(ident);
                             self.next_token();
                         } else {
-                            if separator.is_none() {
-                                separator = Some(ListSeparator::Space);
-                            }
-
                             let result = self.parse_value();
                             match result {
                                 Ok(next_value) => {
@@ -1989,10 +1982,6 @@ impl CssParser {
                         let result = self.parse_value();
                         match result {
                             Ok(next_value) => {
-                                if separator.is_none() {
-                                    separator = Some(ListSeparator::Space);
-                                }
-
                                 values.push(next_value);
                             },
                             Err(_) => {
@@ -2017,7 +2006,7 @@ impl CssParser {
         if values.len() == 1 {
             Ok(values.remove(0))
         } else {
-            Ok(Value::List(values, separator.unwrap_or(ListSeparator::Space)))
+            Ok(Value::List(values))
         }
     }
 

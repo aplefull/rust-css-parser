@@ -342,7 +342,7 @@ pub enum Value {
     Color(Color),
     Function(String, Vec<Value>),
     VarFunction(String, Option<Box<Value>>),
-    List(Vec<Value>, ListSeparator),
+    List(Vec<Value>),
     Keyword(String),
     Calc(CalcExpression),
 }
@@ -358,72 +358,39 @@ impl fmt::Display for Value {
             Value::Function(name, args) => {
                 write!(f, "{}(", name)?;
 
-                let special_functions = ["color-mix", "palette-mix"];
-                if special_functions.contains(&name.to_lowercase().as_str()) && args.len() == 3 {
-                    write!(f, "in ")?;
-                    match &args[0] {
-                        Value::List(items, ListSeparator::Space) => {
-                            let mut first = true;
-                            for item in items {
-                                if !first {
-                                    write!(f, " ")?;
-                                }
-                                write!(f, "{}", item)?;
-                                first = false;
-                            }
-                        },
-                        _ => write!(f, "{}", args[0])?,
-                    }
+                let space_separated_functions = ["drop-shadow", "box-shadow", "translate", "rotate", "scale",
+                    "rect", "translate", "scale", "rotate", "matrix", "perspective"];
 
-                    write!(f, ", ")?;
-
-                    match &args[1] {
-                        Value::List(items, ListSeparator::Space) => {
-                            let mut first = true;
-                            for item in items {
-                                if !first {
-                                    write!(f, " ")?;
-                                }
-                                write!(f, "{}", item)?;
-                                first = false;
-                            }
-                        },
-                        _ => write!(f, "{}", args[1])?,
-                    }
-
-                    write!(f, ", ")?;
-
-                    match &args[2] {
-                        Value::List(items, ListSeparator::Space) => {
-                            let mut first = true;
-                            for item in items {
-                                if !first {
-                                    write!(f, " ")?;
-                                }
-                                write!(f, "{}", item)?;
-                                first = false;
-                            }
-                        },
-                        _ => write!(f, "{}", args[2])?,
-                    }
-                }
-                else {
-                    let space_separated_functions = ["drop-shadow", "box-shadow", "translate", "rotate", "scale",
-                        "rect", "translate", "scale", "rotate", "matrix", "perspective"];
-
-                    if space_separated_functions.contains(&name.to_lowercase().as_str()) {
-                        let mut first = true;
-                        for arg in args {
-                            if !first {
-                                write!(f, " ")?;
-                            }
-                            write!(f, "{}", arg)?;
-                            first = false;
+                if space_separated_functions.contains(&name.to_lowercase().as_str()) {
+                    let mut first = true;
+                    for arg in args {
+                        if !first {
+                            write!(f, " ")?;
                         }
-                    } else {
-                        if args.len() <= 3 && args.len() >= 1 {
-                            match &args[0] {
-                                Value::List(items, ListSeparator::Space) => {
+                        write!(f, "{}", arg)?;
+                        first = false;
+                    }
+                } else {
+                    if args.len() <= 3 && args.len() >= 1 {
+                        match &args[0] {
+                            Value::List(items) => {
+                                let mut first = true;
+                                for item in items {
+                                    if !first {
+                                        write!(f, " ")?;
+                                    }
+                                    write!(f, "{}", item)?;
+                                    first = false;
+                                }
+                            },
+                            _ => write!(f, "{}", args[0])?,
+                        }
+
+                        if args.len() >= 3 && args[1].to_string() == "/" {
+                            write!(f, " / ")?;
+
+                            match &args[2] {
+                                Value::List(items) => {
                                     let mut first = true;
                                     for item in items {
                                         if !first {
@@ -433,44 +400,27 @@ impl fmt::Display for Value {
                                         first = false;
                                     }
                                 },
-                                _ => write!(f, "{}", args[0])?,
+                                _ => write!(f, "{}", args[2])?,
                             }
-
-                            if args.len() >= 3 && args[1].to_string() == "/" {
-                                write!(f, " / ")?;
-
-                                match &args[2] {
-                                    Value::List(items, ListSeparator::Space) => {
-                                        let mut first = true;
-                                        for item in items {
-                                            if !first {
-                                                write!(f, " ")?;
-                                            }
-                                            write!(f, "{}", item)?;
-                                            first = false;
-                                        }
-                                    },
-                                    _ => write!(f, "{}", args[2])?,
-                                }
+                        }
+                    } else {
+                        let mut first = true;
+                        for arg in args {
+                            if !first {
+                                write!(f, ", ")?;
                             }
-                        } else {
-                            let mut first = true;
-                            for arg in args {
-                                if !first {
-                                    write!(f, ", ")?;
-                                }
-                                write!(f, "{}", arg)?;
-                                first = false;
-                            }
+                            write!(f, "{}", arg)?;
+                            first = false;
                         }
                     }
                 }
+
 
                 write!(f, ")")
             }
             Value::VarFunction(name, None) => write!(f, "var({})", name),
             Value::VarFunction(name, Some(fallback)) => write!(f, "var({}, {})", name, fallback),
-            Value::List(items, ListSeparator::Space) => {
+            Value::List(items) => {
                 let mut first = true;
                 for item in items {
                     if !first {
@@ -480,18 +430,7 @@ impl fmt::Display for Value {
                     first = false;
                 }
                 Ok(())
-            },
-            Value::List(items, ListSeparator::Comma) => {
-                let mut first = true;
-                for item in items {
-                    if !first {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{}", item)?;
-                    first = false;
-                }
-                Ok(())
-            },
+            }
             Value::Keyword(keyword) => write!(f, "{}", keyword),
             Value::Calc(expr) => write!(f, "calc({})", expr),
         }

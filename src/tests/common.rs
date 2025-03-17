@@ -57,8 +57,8 @@ pub fn compare_values(a: &Value, b: &Value) -> bool {
             }
         },
 
-        (Value::List(a_items, a_sep), Value::List(b_items, b_sep)) => {
-            if a_sep != b_sep || a_items.len() != b_items.len() {
+        (Value::List(a_items), Value::List(b_items)) => {
+            if a_items.len() != b_items.len() {
                 return false;
             }
 

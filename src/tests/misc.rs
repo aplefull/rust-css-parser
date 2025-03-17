@@ -25,7 +25,6 @@ fn test_url() {
                     vec![Value::QuotedString("woff2".to_string())]
                 ),
             ],
-            Space
         )
     ));
 
